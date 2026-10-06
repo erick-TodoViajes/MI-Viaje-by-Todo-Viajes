@@ -7,6 +7,17 @@ const $root = document.getElementById('root');
 const $modal = document.getElementById('modal');
 const APP_URL = (C.APP_URL || location.origin).replace(/\/$/, '');
 let ME = null;
+const IP = {
+  home: '<path d="M3.5 10.5 12 4l8.5 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-4v-5.5h-6v5.5H5A1.5 1.5 0 0 1 3.5 19z"/>',
+  suitcase: '<rect x="4" y="7" width="16" height="12.5" rx="2"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M9 7v12.5M15 7v12.5"/>',
+  users: '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5c1-3.2 3.5-5 6.5-5s5.5 1.8 6.5 5M15.5 5.2a3.5 3.5 0 0 1 0 6.6M17.5 14.7c2 .6 3.4 2.2 4 4.8"/>',
+  gift: '<rect x="3.5" y="8.5" width="17" height="4" rx="1"/><path d="M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5M12 8.5v12M12 8.5S10.8 4 8.3 4a2.2 2.2 0 0 0 0 4.5H12m0 0s1.2-4.5 3.7-4.5a2.2 2.2 0 0 1 0 4.5H12"/>',
+  copy: '<rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v9A1.5 1.5 0 0 0 5 15.5h3.5"/>',
+  badge: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5"/>',
+  plane: '<path d="M2.5 19.5h19M3.8 13.6l2.6 1.9 13.4-4.7a1.6 1.6 0 0 0-1-3l-4.4 1.4-6-4.4-2 .7 3.6 4.8-3.7 1.2L4.2 8.3l-1.5.6z"/>',
+  card: '<rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19M6.5 15h3"/>'
+};
+const pic = (n) => `<svg class="pi" viewBox="0 0 24 24" aria-hidden="true">${IP[n]}</svg>`;
 
 // ---------------- utilidades ----------------
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -74,7 +85,7 @@ async function boot() {
   route();
 }
 function renderLogin() {
-  $root.innerHTML = `<div class="login"><form class="box" id="lf"><div class="small muted" style="letter-spacing:.16em;text-transform:uppercase;font-weight:800">Todo Viajes</div><h1>Panel Mi Viaje</h1>
+  $root.innerHTML = `<div class="login"><form class="box" id="lf"><img src="/assets/logo.png" alt="Todo Viajes" class="login-logo"><h1>Panel Mi Viaje</h1><p class="muted" style="margin:0">Entra con tu correo del equipo.</p>
     <div class="form" style="margin-top:16px"><div class="f c12"><label>Correo</label><input name="email" type="email" required autocomplete="username"></div>
     <div class="f c12"><label>Contraseña</label><input name="password" type="password" required autocomplete="current-password"></div></div>
     <div class="err" id="err"></div><button class="btn" style="width:100%;justify-content:center;margin-top:8px">Entrar</button></form></div>`;
@@ -88,12 +99,12 @@ function renderLogin() {
 }
 
 // ---------------- layout y rutas ----------------
-const NAV = [['#/', 'Inicio', '🏠'], ['#/viajes', 'Viajes', '🧳'], ['#/clientes', 'Clientes', '👥'], ['#/referidos', 'Referidos', '🎁'], ['#/plantillas', 'Plantillas', '📋'], ['#/equipo', 'Equipo', '🧑‍💼']];
+const NAV = [['#/', 'Inicio', 'home'], ['#/viajes', 'Viajes', 'suitcase'], ['#/clientes', 'Clientes', 'users'], ['#/referidos', 'Referidos', 'gift'], ['#/plantillas', 'Plantillas', 'copy'], ['#/equipo', 'Equipo', 'badge']];
 function shell(content) {
   const h = location.hash || '#/';
   const on = (k) => (k === '#/' ? h === '#/' || h === '' : h.startsWith(k.replace(/s$/, ''))) ? 'on' : '';
-  $root.innerHTML = `<div class="layout"><aside class="side"><div class="brand">Mi Viaje<small>Panel Todo Viajes</small></div>
-    <nav class="nav">${NAV.map(([k, n, i]) => `<a href="${k}" class="${on(k)}">${i} ${n}</a>`).join('')}</nav>
+  $root.innerHTML = `<div class="layout"><aside class="side"><div class="brand"><img src="/assets/logo-white.png" alt="Todo Viajes"><small>Panel Mi Viaje</small></div>
+    <nav class="nav">${NAV.map(([k, n, i]) => `<a href="${k}" class="${on(k)}">${pic(i)}<span>${n}</span></a>`).join('')}</nav>
     <div class="me">${esc(ME.nombre)}<br><span class="muted">${esc(ME.rol)}</span><br><button id="logout">Cerrar sesión</button></div></aside>
     <main class="main" id="main">${content}</main></div>`;
   const lo = document.getElementById('logout'); if (lo) lo.onclick = async () => { await sb.auth.signOut(); renderLogin(); };
@@ -136,7 +147,7 @@ async function pInicio() {
   });
   const EV = { entrada: 'entró a la app', visita: 'abrió la app', ver_documento: 'vio un documento', checklist: 'actualizó su checklist', compartir_codigo: 'compartió su código', compartir_viaje: 'compartió su viaje' };
   setMain(`<div class="top"><div><h1>Hola, ${esc(ME.nombre.split(' ')[0])}</h1><div class="sub">Así va Mi Viaje hoy.</div></div><div class="btns"><a class="btn sec" href="#/clientes?nuevo=1">+ Cliente</a><a class="btn" href="#/viaje/nuevo">+ Nuevo viaje</a></div></div>
-    <div class="grid3" style="margin-bottom:18px"><div class="kpi"><b>${prox.length}</b><span>viajes próximos o en curso</span></div><div class="kpi"><b>${nCli.count || 0}</b><span>clientes</span></div><div class="kpi"><b>${vencidos.length}</b><span>pagos vencidos o por vencer (7 días)</span></div></div>
+    <div class="grid3" style="margin-bottom:18px"><div class="kpi">${pic('plane')}<b>${prox.length}</b><span>viajes próximos o en curso</span></div><div class="kpi">${pic('users')}<b>${nCli.count || 0}</b><span>clientes</span></div><div class="kpi ${vencidos.length ? 'alert' : ''}">${pic('card')}<b>${vencidos.length}</b><span>pagos vencidos o por vencer (7 días)</span></div></div>
     <div class="grid2"><div>
       <div class="card"><div class="card-h"><h2>Próximos viajes</h2><a href="#/viajes">Ver todos</a></div>${prox.length ? `<table>${prox.map((v) => `<tr class="click" data-href="#/viaje/${v.id}"><td>${esc(v.bandera || '')} <b>${esc(v.titulo)}</b><div class="small muted">${esc((v.viaje_viajeros || []).map((x) => x.clientes && x.clientes.nombre_completo).filter(Boolean).join(', '))}</div></td><td class="small">${fDate(v.fecha_inicio)}</td></tr>`).join('')}</table>` : '<div class="empty">Sin viajes próximos.</div>'}</div>
       <div class="card"><div class="card-h"><h2>Pagos por atender</h2></div>${vencidos.length ? `<table>${vencidos.map(({ v, p, falta }) => `<tr class="click" data-href="#/viaje/${v.id}"><td><b>${esc(v.titulo)}</b><div class="small muted">${money(Math.min(falta, p.monto), v.moneda)}</div></td><td><span class="pill ${p.fecha_limite < isoDay(today()) ? 'bad' : 'warn'}">${p.fecha_limite < isoDay(today()) ? 'Vencido' : 'Vence'} ${fDate(p.fecha_limite)}</span></td></tr>`).join('')}</table>` : '<div class="empty">Todo al corriente ✓</div>'}</div>
