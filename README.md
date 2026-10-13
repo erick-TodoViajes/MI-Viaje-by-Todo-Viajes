@@ -1,19 +1,22 @@
 # Mi Viaje · Todo Viajes
 
-App para clientes (`/`) y panel del equipo (`/panel`). Funciona con Supabase y Vercel, sin paso de compilación.
+App para los clientes de Todo Viajes (`/`). Desde octubre de 2026 está **integrada al CRM**: usa la misma base de datos (Supabase `todo-viajes-crm`) y el equipo la administra desde el CRM, no desde un panel aparte.
+
+## Cómo funciona
+1. En el CRM, una oportunidad en **"Venta concretada"** muestra la tarjeta **Mi Viaje → Activar**.
+2. El asesor confirma los datos (prellenados desde la oportunidad) y el viaje queda creado.
+3. El cliente entra a esta app con su **nombre + celular** (los del CRM) y crea un PIN de 4 números.
 
 ## Estructura
-- `index.html`, `assets/` — app del cliente (entra con nombre + celular → PIN de 4 números)
-- `panel/` — panel del equipo (correo + contraseña de Supabase Auth)
-- `api/documento.js` — función de Vercel que genera enlaces temporales a documentos privados
+- `index.html`, `assets/` — app del cliente (PWA, sin paso de compilación)
 - `config.js` — URL y clave **pública** de Supabase, WhatsApp de la agencia
-- `supabase/` — scripts SQL (ejecutar en orden: 01, 02)
+- `panel/` — solo un aviso que manda al CRM (el panel viejo se retiró)
+- `sw.js` — service worker; subir la versión de `CACHE` cuando cambien archivos importantes
 
-## Variables de entorno en Vercel
-| Nombre | Valor |
-|---|---|
-| `SUPABASE_URL` | `https://knslzwptqxpiuchlkudk.supabase.co` |
-| `SUPABASE_SECRET_KEY` | clave secreta (service_role / `sb_secret_…`) — **solo en Vercel** |
+## Base de datos (vive en el CRM)
+- Tablas con prefijo `mv_` (viajes, segmentos, pagos, documentos, checklist, referidos, recompensas, actividad, accesos de clientes).
+- La app solo llama funciones `mv_*` (`mv_identificar`, `mv_crear_pin`, `mv_entrar`, `mv_datos`, `mv_checklist`, `mv_evento`, `mv_salir`). No puede leer ninguna tabla directamente.
+- Los documentos se abren con la función `mv-documento` de Supabase (enlace temporal de 5 minutos). **Ya no hace falta ninguna variable de entorno en Vercel.**
 
-## Ajustes recomendados en Supabase
-- Authentication → Sign In / Providers → desactivar **"Allow new users to sign up"** (el equipo se da de alta manualmente).
+## Pendiente de configurar
+- `AGENCIA_WHATSAPP` en `config.js` con el WhatsApp real de la agencia (lada 52).

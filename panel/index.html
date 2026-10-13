@@ -3,19 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
-<title>Panel · Mi Viaje</title>
-<link rel="icon" href="/assets/favicon.png" type="image/png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/panel/panel.css">
+<title>Panel Mi Viaje · Todo Viajes</title>
+<meta http-equiv="refresh" content="4;url=https://todoviajes-registro.netlify.app">
+<style>
+  :root{--rojo:#C02026;--tinta:#111214;--papel:#F4F4F6;--gris:#5F636B}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--papel);color:var(--tinta);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+  main{max-width:420px;text-align:center;background:#fff;border-radius:22px;padding:32px 24px;box-shadow:0 8px 30px rgba(0,0,0,.06)}
+  img{width:120px}
+  h1{font-size:20px;margin:20px 0 8px}
+  p{color:var(--gris);line-height:1.5;margin:0 0 20px}
+  a{display:inline-block;background:var(--rojo);color:#fff;text-decoration:none;font-weight:600;padding:14px 22px;border-radius:14px}
+</style>
 </head>
 <body>
-<div id="root"><div class="center"><div class="spinner"></div></div></div>
-<div id="modal"></div>
-<div class="toast" id="toast"></div>
-<script src="/config.js"></script>
-<script type="module" src="/panel/panel.js"></script>
+<main>
+  <img src="/assets/logo.png" alt="Todo Viajes">
+  <h1>El panel de Mi Viaje ahora está dentro del CRM</h1>
+  <p>Entra con tu usuario de siempre del CRM. Los viajes se activan desde cada venta concretada.</p>
+  <a href="https://todoviajes-registro.netlify.app">Ir al CRM</a>
+</main>
 </body>
 </html>

@@ -77,8 +77,8 @@
   };
   const ic = (n, cls) => `<svg class="i ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || P.info}</svg>`;
   const WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.5.5 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.4-.3z"/></svg>';
-  const SEGICON = { vuelo: 'planeLine', hotel: 'bed', traslado: 'van', actividad: 'palm', otro: 'info' };
-  const SEGNAME = { vuelo: 'Vuelo', hotel: 'Hospedaje', traslado: 'Traslado', actividad: 'Actividad', otro: 'Información' };
+  const SEGICON = { vuelo: 'planeLine', autobus: 'van', hotel: 'bed', traslado: 'van', actividad: 'palm', otro: 'info' };
+  const SEGNAME = { vuelo: 'Vuelo', autobus: 'Autobús', hotel: 'Hospedaje', traslado: 'Traslado', actividad: 'Actividad', otro: 'Información' };
   const DOC = {
     voucher: ['Voucher', 'ticket', '#C02026'], confirmacion: ['Confirmación', 'badge', '#14804A'], boleto: ['Boleto de avión', 'planeLine', '#111214'],
     seguro: ['Seguro de viaje', 'shield', '#1B5E9A'], itinerario: ['Itinerario', 'cal', '#B26A00'], otro: ['Documento', 'file', '#5F636B']
@@ -153,6 +153,8 @@
     const ase = v && v.asesor;
     return { num: waNum((ase && ase.whatsapp) || C.AGENCIA_WHATSAPP), nombre: (ase && ase.nombre) || C.AGENCIA_NOMBRE || 'Todo Viajes', sucursal: ase && ase.sucursal };
   }
+  // WhatsApp de su asesor o sucursal (del viaje más reciente); si no hay viaje, el general de la agencia
+  const agWa = () => contactInfo(((S.data && S.data.viajes) || []).slice(-1)[0]).num;
   function helpLink(extra) {
     const v = currentTrip(), c = contactInfo(v), nom = S.data ? S.data.cliente.primer_nombre : '';
     const txt = extra || `Hola ${c.nombre.split(' ')[0]}, soy ${nom}.` + (v ? ` Tengo una duda sobre mi viaje a ${v.titulo}.` : '');
@@ -229,7 +231,7 @@
         if (r.estado === 'crear_pin') { L.paso = 'crear'; return renderLogin(); }
         if (r.estado === 'pedir_pin') { L.paso = 'pin'; return renderLogin(); }
         if (r.estado === 'bloqueado') setMsg('Demasiados intentos. Intenta de nuevo en unos minutos.');
-        else setMsg('No encontramos un viaje con esos datos. Revisa tu nombre y celular, o escríbenos.');
+        else setMsg('No encontramos un viaje con esos datos. Usa el nombre y celular que diste en tu sucursal Todo Viajes, o escríbenos.');
       } catch (err) { setMsg(err.message); }
       busy(fid, false);
     };
@@ -476,7 +478,7 @@
   }
   function keySegments(v, compact, d) {
     const segs = v.segmentos || [];
-    const items = [segs.find((s) => s.tipo === 'vuelo'), segs.find((s) => s.tipo === 'hotel'), segs.find((s) => s.tipo === 'traslado')].filter(Boolean);
+    const items = [segs.find((s) => s.tipo === 'vuelo') || segs.find((s) => s.tipo === 'autobus'), segs.find((s) => s.tipo === 'hotel'), segs.find((s) => s.tipo === 'traslado')].filter(Boolean);
     if (!items.length) return '';
     return `<div class="section reveal" style="--d:${d}"><div class="sec-head"><h3 class="d-md">${compact ? 'Lo importante' : 'Tu viaje'}</h3><button class="more" data-go="viaje">Ver todo ${ic('chev', 'sm')}</button></div><div class="card">${items.map(segCard).join('')}</div></div>`;
   }
@@ -513,7 +515,7 @@
         <div class="bub">${ic('compass', 'lg')}</div>
         <h1 class="d-lg" style="margin:0 0 8px">Hola, ${esc(c.primer_nombre)}</h1>
         <p class="muted" style="margin:0 auto;max-width:30ch">${past ? '¿Listo para tu siguiente aventura? Te ayudamos a planearla.' : 'Cuando reserves con Todo Viajes, todo tu viaje aparecerá aquí.'}</p>
-        <a class="btn" href="${waLink(waNum(C.AGENCIA_WHATSAPP), `Hola, soy ${c.primer_nombre}. ¡Quiero cotizar un viaje!`)}" target="_blank" rel="noopener">${ic('compass', 'sm')} Cotizar un viaje</a></div>
+        <a class="btn" href="${waLink(agWa(), `Hola, soy ${c.primer_nombre}. ¡Quiero cotizar un viaje!`)}" target="_blank" rel="noopener">${ic('compass', 'sm')} Cotizar un viaje</a></div>
       ${past ? passportBlock() : ''}`;
   }
 
@@ -538,7 +540,7 @@
     </div>
     <nav class="subnav" aria-label="Secciones">${chips.map(([id, n], i) => `<button class="tap ${i === 0 ? 'on' : ''}" data-jump="${id}">${n}</button>`).join('')}</nav>`;
     html += `<div id="resumen" style="scroll-margin-top:72px">`;
-    [['vuelo', 'Vuelos'], ['hotel', 'Hospedaje'], ['traslado', 'Traslados'], ['actividad', 'Actividades'], ['otro', 'Información']].forEach(([t, n], i) => {
+    [['vuelo', 'Vuelos'], ['autobus', 'Autobús'], ['hotel', 'Hospedaje'], ['traslado', 'Traslados'], ['actividad', 'Actividades'], ['otro', 'Información']].forEach(([t, n], i) => {
       const l = segs.filter((s) => s.tipo === t);
       if (l.length) html += `<div class="section reveal" style="--d:${i}"><div class="sec-head"><h3 class="d-md">${n}</h3></div><div class="card">${l.map(segCard).join('')}</div></div>`;
     });
@@ -612,7 +614,7 @@
   function shareText() {
     const c = S.data.cliente, p = S.data.promo || {};
     const base = (p.mensaje || '¡Viaja con Todo Viajes! Usa mi código {codigo}.').replace(/\{codigo\}/g, c.codigo_referido).replace(/\{recompensa\}/g, p.nuevo_texto || 'un beneficio especial');
-    return base + '\n\nEscríbeles aquí: ' + waLink(waNum(C.AGENCIA_WHATSAPP), `Hola, vengo recomendado con el código ${c.codigo_referido}`);
+    return base + '\n\nEscríbeles aquí: ' + waLink(agWa(), `Hola, vengo recomendado con el código ${c.codigo_referido}`);
   }
   function viewBeneficios() {
     const c = S.data.cliente, p = S.data.promo || {}, r = S.data.referidos || { total: 0, lista: [] }, rec = S.data.recompensas || [];
@@ -672,7 +674,7 @@
       <div class="section"><div class="sec-head"><h3 class="d-md">Mis viajes</h3></div><div class="card">${(S.data.viajes || []).length ? S.data.viajes.slice().reverse().map((v) => `<button class="list-row tap" data-trip="${v.id}" data-go="viaje"><div class="bub" aria-hidden="true">${esc(v.bandera || '')}</div><div><div class="t">${esc(v.titulo)}</div><div class="d">${fmtRange(v.fecha_inicio, v.fecha_fin)}</div></div><div class="r">${pDate(v.fecha_fin) < today() ? 'Completado' : '<span class="badge red">Próximo</span>'}${ic('chev', 'sm')}</div></button>`).join('') : '<div class="empty-note">Aún no tienes viajes.</div>'}</div></div>
       ${!standalone ? `<div class="section"><div class="card"><button class="list-row tap" data-act="install"><div class="bub">${ic('install')}</div><div><div class="t">Agrégala a tu pantalla de inicio</div><div class="d">${ios ? 'Toca Compartir y luego "Agregar a inicio"' : 'Ábrela como una app, sin descargar nada'}</div></div><div class="r">${ic('chev', 'sm')}</div></button></div></div>` : ''}
       <div class="section"><div class="sec-head"><h3 class="d-md">Todo Viajes</h3></div><div class="card">
-        <a class="list-row tap" href="${waLink(waNum(C.AGENCIA_WHATSAPP), 'Hola, tengo una duda.')}" target="_blank" rel="noopener"><div class="bub" style="color:#1E9E52">${WA.replace('<svg', '<svg width="22" height="22" fill="#1E9E52"')}</div><div><div class="t">WhatsApp</div><div class="d">Estamos contigo si necesitas ayuda</div></div><div class="r">${ic('chev', 'sm')}</div></a>
+        <a class="list-row tap" href="${waLink(agWa(), 'Hola, tengo una duda.')}" target="_blank" rel="noopener"><div class="bub" style="color:#1E9E52">${WA.replace('<svg', '<svg width="22" height="22" fill="#1E9E52"')}</div><div><div class="t">WhatsApp</div><div class="d">Estamos contigo si necesitas ayuda</div></div><div class="r">${ic('chev', 'sm')}</div></a>
         ${C.AGENCIA_TELEFONO ? `<a class="list-row tap" href="tel:${esc(C.AGENCIA_TELEFONO)}"><div class="bub">${ic('phone')}</div><div><div class="t">Llamar</div><div class="d">${esc(C.AGENCIA_TELEFONO)}</div></div><div class="r">${ic('chev', 'sm')}</div></a>` : ''}
         <button class="list-row tap" data-act="logout"><div class="bub">${ic('out')}</div><div><div class="t">Cerrar sesión</div><div class="d">Tu información queda protegida</div></div></button>
       </div></div>
@@ -741,7 +743,7 @@
     const w = window.open('', '_blank');
     if (w) w.document.write('<p style="font-family:system-ui,sans-serif;padding:24px;color:#5F636B">Abriendo documento…</p>');
     try {
-      const r = await fetch('/api/documento', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: S.token, id }) });
+      const r = await fetch(C.SUPABASE_URL + '/functions/v1/mv-documento', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: S.token, id }) });
       const j = await r.json();
       if (!r.ok || !j.url) throw new Error(j.error || 'No disponible');
       if (w) w.location.href = j.url; else window.location.href = j.url;
