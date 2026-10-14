@@ -116,11 +116,13 @@ svg.i.sm{width:18px;height:18px} svg.i.lg{width:26px;height:26px}
 .hero{position:relative;color:#fff;padding:calc(var(--safe-t) + 14px) 20px 132px;background:
   radial-gradient(90% 70% at 100% 0%,color-mix(in srgb,var(--dest-c) 55%,transparent) 0%,transparent 60%),
   linear-gradient(170deg,var(--dest-a) 0%,var(--dest-b) 100%);overflow:hidden}
-.hero.img{background:#000}
-.hero-img{position:absolute;inset:0;background-size:cover;background-position:center;transform:scale(1.06);animation:kenburns 14s ease-out both}
+.hero.img{background:#1b1c1f;min-height:calc(var(--safe-t) + 340px)}
+.hero-img{position:absolute;inset:0;background-size:cover;background-position:center 40%;background-repeat:no-repeat;transform:scale(1.06);animation:kenburns 14s ease-out both;opacity:0;transition:opacity .6s var(--ease)}
+.hero-img.on{opacity:1}
 @keyframes kenburns{to{transform:scale(1)}}
-.hero-img::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,rgba(0,0,0,.1) 40%,rgba(0,0,0,.55) 100%)}
-.hero > *{position:relative}
+.hero-img::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.08) 38%,rgba(0,0,0,.08) 62%,rgba(0,0,0,.45) 100%)}
+.hero.img .hello,.hero.img .topbar{text-shadow:0 1px 8px rgba(0,0,0,.35)}
+.hero > :not(.hero-img):not(.hero-arc){position:relative}
 .hero-arc{position:absolute;inset:auto 0 70px 0;width:100%;height:120px;opacity:.5}
 .hero-arc path{stroke:#fff;stroke-width:1.5;stroke-dasharray:2 8;fill:none;stroke-linecap:round}
 .topbar{display:flex;align-items:center;justify-content:space-between;min-height:44px}
@@ -158,6 +160,12 @@ svg.i.sm{width:18px;height:18px} svg.i.lg{width:26px;height:26px}
 .flap span{position:relative;width:46px;height:62px;border-radius:10px;background:var(--tinta);color:#fff;font-family:var(--display);font-weight:600;font-size:2.1rem;display:grid;place-items:center;overflow:hidden;box-shadow:inset 0 -2px 0 rgba(255,255,255,.06)}
 .flap span::after{content:"";position:absolute;left:0;right:0;top:50%;height:1.5px;background:rgba(0,0,0,.55);box-shadow:0 1px 0 rgba(255,255,255,.07)}
 .flap span.go{animation:flip .55s var(--ease) both}
+.flap span.tick{animation:tick .16s linear both}
+@keyframes tick{0%{transform:rotateX(70deg);opacity:.55}100%{transform:none;opacity:1}}
+.flap.landed{animation:landed .5s var(--spring) both}
+@keyframes landed{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
+.count-label small{transition:opacity .4s var(--ease),transform .4s var(--ease)}
+.count-row.counting .count-label small{opacity:0;transform:translateY(4px)}
 @keyframes flip{0%{transform:rotateX(90deg);opacity:.2}60%{transform:rotateX(-12deg);opacity:1}100%{transform:none}}
 .flap.big span{width:54px;height:72px;font-size:2.5rem}
 .big-word{font-family:var(--display);font-weight:600;font-size:1.6rem;letter-spacing:-.03em;line-height:1.1}
@@ -420,3 +428,38 @@ svg.i.sm{width:18px;height:18px} svg.i.lg{width:26px;height:26px}
 
 .route .mid svg,.boarding .mid svg{transform:rotate(90deg)}
 .login-plane svg{transform:rotate(90deg)}
+
+/* =====================================================================
+   INSTALAR LA APP · guía paso a paso
+   ===================================================================== */
+[hidden]{display:none!important}
+body.no-scroll{overflow:hidden}
+.inst-ov{position:fixed;inset:0;z-index:60;background:rgba(17,18,20,.5);display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .25s ease both}
+@keyframes fadeIn{from{opacity:0}}
+.sheet.inst{width:100%;max-width:520px;max-height:92vh;overflow-y:auto;overscroll-behavior:contain;padding-top:22px}
+.inst-x{position:absolute;top:10px;right:12px;width:44px;height:44px;border-radius:50%;font-size:1.6rem;line-height:1;color:var(--gris);display:grid;place-items:center}
+.inst-head{display:flex;align-items:center;gap:14px;padding-right:36px}
+.inst-head img{width:56px;height:56px;border-radius:14px;box-shadow:var(--sombra-1);flex:none}
+.inst-head h2{margin:0}
+.inst-head p{margin:4px 0 0;font-size:.9375rem}
+.inst-tabs{display:flex;gap:4px;margin-top:18px;padding:4px;background:var(--papel);border-radius:999px}
+.inst-tabs button{flex:1;min-height:40px;border-radius:999px;font-weight:700;color:var(--gris);font-size:.9375rem}
+.inst-tabs button[aria-selected=true]{background:var(--blanco);color:var(--tinta);box-shadow:var(--sombra-1)}
+.inst-warn{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:12px 14px;border-radius:var(--r-md);background:var(--aviso-50);color:var(--aviso);font-weight:600;font-size:.9rem}
+.inst-steps{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:4px}
+.inst-step{display:flex;gap:14px;padding:12px 0;animation:rise .45s var(--ease) both;animation-delay:calc(var(--i) * 70ms)}
+.inst-step + .inst-step{border-top:1px solid var(--linea)}
+.inst-n{flex:none;width:30px;height:30px;border-radius:50%;background:var(--rojo);color:#fff;font-weight:800;display:grid;place-items:center;font-size:.9375rem}
+.inst-step .t{font-size:1rem;line-height:1.35}
+.inst-step .d{font-size:.875rem;color:var(--gris);margin-top:3px;line-height:1.4}
+.inst-demo{margin-top:8px}
+.inst-chip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:6px 12px;border-radius:10px;background:var(--papel);border:1px solid var(--linea);color:#0A84FF;font-size:.875rem}
+.inst-chip b{color:var(--tinta);font-weight:600}
+.inst-chip:not(:has(svg)) b{color:#0A84FF;font-weight:700}
+.inst-banner{position:relative;display:flex;align-items:center;gap:12px;padding:14px 64px 14px 12px;border-radius:var(--r-lg);background:var(--tinta);color:#fff;box-shadow:var(--sombra-2)}
+.inst-banner img{width:44px;height:44px;border-radius:11px;flex:none}
+.inst-banner .tx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.inst-banner .tx span{font-size:.8125rem;opacity:.8}
+.inst-go{flex:none;min-height:40px;padding:0 14px;border-radius:999px;background:var(--rojo);color:#fff;font-weight:700;font-size:.875rem}
+.inst-no{position:absolute;top:2px;right:2px;width:40px;height:40px;color:#fff;opacity:.6;font-size:1.3rem;line-height:1}
+@media (prefers-reduced-motion: reduce){.inst-step,.inst-ov{animation:none}}

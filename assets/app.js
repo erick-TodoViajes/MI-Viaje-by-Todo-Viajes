@@ -198,6 +198,7 @@
         <a class="link" href="${waLink(waNum(C.AGENCIA_WHATSAPP), `Hola, olvidé mi PIN de Mi Viaje. Mi celular es ${L.celular || ''}.`)}" target="_blank" rel="noopener"><u>Olvidé mi PIN</u></a>
         <button class="link" data-act="volver" style="margin-top:0"><u>Usar otro celular</u></button>`;
     }
+    if (L.paso === 'id' && !isStandalone()) card += `<button class="link" data-act="install" style="margin-top:10px">${ic('install', 'sm')} <u>¿Cómo instalo la app en mi celular?</u></button>`;
     $root.innerHTML = `
       <div class="login">
         <svg class="login-arc" viewBox="0 0 420 150" preserveAspectRatio="none" aria-hidden="true"><path d="M -20 130 C 120 10, 300 10, 440 90"/></svg>
@@ -218,6 +219,7 @@
   function bindLogin() {
     const L = S.login;
     $root.querySelectorAll('[data-act=volver]').forEach((b) => b.onclick = () => { S.login = { paso: 'id', nombre: L.nombre, celular: L.celular }; renderLogin(); });
+    $root.querySelectorAll('[data-act=install]').forEach((b) => b.onclick = () => openInstall());
     const fid = document.getElementById('f-id');
     if (fid) fid.onsubmit = async (e) => {
       e.preventDefault();
@@ -285,6 +287,7 @@
       const d = await rpc('mv_datos', { p_token: S.token });
       if (!d || d.error) { store.del(TOKEN_KEY); S.token = null; return renderLogin(); }
       S.data = d;
+      marcarInstalada();
       const last = Number(store.get('mv_visita') || 0);
       if (Date.now() - last > 6 * 3600e3) { store.set('mv_visita', String(Date.now())); logEvent('visita'); }
       render(silent);
@@ -316,15 +319,44 @@
   function afterRender(quiet) {
     // Muesca del boleto exactamente en la línea perforada
     document.querySelectorAll('.ticket,.invite').forEach((t) => { const a = t.querySelector('.ticket-a,.invite-a'); if (a) t.style.setProperty('--cut', a.offsetHeight + 'px'); });
-    // Tablero de aeropuerto
+    // Portada: se muestra cuando la foto ya cargó (si falla, queda el color del destino)
+    document.querySelectorAll('.hero-img[data-src]').forEach((el) => {
+      const im = new Image();
+      im.onload = () => el.classList.add('on');
+      im.onerror = () => { const h = el.closest('.hero'); el.remove(); if (h) h.classList.remove('img'); };
+      im.src = el.dataset.src;
+      if (im.complete && im.naturalWidth) el.classList.add('on');
+    });
+    // Contador de días: cuenta de 0 al número real, con las tarjetas volteando
     document.querySelectorAll('.flap[data-val]').forEach((f) => {
-      const val = f.dataset.val, spans = f.querySelectorAll('span');
-      if (REDUCED || quiet) { spans.forEach((s, i) => s.textContent = val[i]); return; }
-      spans.forEach((s, i) => {
-        let n = 0; const steps = 6 + i * 3;
-        const tick = () => { n++; s.classList.remove('go'); void s.offsetWidth; s.classList.add('go'); s.textContent = n >= steps ? val[i] : String(Math.floor(Math.random() * 10)); if (n < steps) setTimeout(tick, 70); };
-        setTimeout(tick, 250 + i * 60);
-      });
+      const val = f.dataset.val, target = Number(val), width = val.length, spans = f.querySelectorAll('span');
+      const paint = (n, cls) => {
+        const str = String(n).padStart(width, '0');
+        spans.forEach((sp, i) => {
+          if (sp.textContent === str[i] && cls !== 'go') return;
+          sp.textContent = str[i];
+          sp.classList.remove('go', 'tick'); void sp.offsetWidth; sp.classList.add(cls);
+        });
+      };
+      if (REDUCED || quiet || !target) { spans.forEach((sp, i) => sp.textContent = val[i]); return; }
+      const row = f.closest('.count-row'); if (row) row.classList.add('counting');
+      const steps = Math.min(target, 16), dur = Math.min(1500, 650 + target * 12);
+      spans.forEach((sp) => sp.textContent = '0');
+      let k = 0;
+      const next = () => {
+        k++;
+        const t = k / steps, e = 1 - Math.pow(1 - t, 3);
+        const n = k >= steps ? target : Math.max(1, Math.round(target * e));
+        if (k >= steps) {
+          paint(target, 'go');
+          f.classList.remove('landed'); void f.offsetWidth; f.classList.add('landed');
+          if (row) setTimeout(() => row.classList.remove('counting'), 250);
+          return;
+        }
+        paint(n, 'tick');
+        setTimeout(next, Math.max(45, dur / steps * (0.45 + t)));
+      };
+      setTimeout(next, 380);
     });
     // Plan de vuelo: puntos, trazo y avión
     const fp = document.querySelector('.fp-svg');
@@ -364,7 +396,7 @@
   }
   function heroBlock(v, st) {
     const c = S.data.cliente;
-    const img = v.imagen_url ? `<div class="hero-img" style="background-image:url('${esc(v.imagen_url)}')"></div>` : '';
+    const img = v.imagen_url ? `<div class="hero-img" data-src="${esc(v.imagen_url)}" style="background-image:url('${esc(v.imagen_url)}')"></div>` : '';
     const chip = { futuro: `Faltan ${st.d} días`, inminente: st.d === 1 ? 'Mañana despegas' : `Faltan ${st.d} días`, hoy: 'Hoy es el día', durante: 'Viaje en curso', despues: 'De regreso a casa' }[st.k];
     return `<header class="hero ${v.imagen_url ? 'img' : ''}">${img}
       ${v.imagen_url ? '' : '<svg class="hero-arc" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true"><path d="M-10 110 C 110 -10, 290 -10, 410 80"/></svg>'}
@@ -406,6 +438,7 @@
     const st = stageOf(v), pr = progress(v), np = nextPayment(v);
     let html = heroBlock(v, st) + ticketBlock(v, st);
     let k = 1;
+    html += installBanner(k++);
     if (st.k === 'futuro' || st.k === 'inminente') {
       html += nextStep(v, np, k++);
       html += flightPlan(pr, k++);
@@ -663,7 +696,7 @@
   }
   function viewPerfil() {
     const c = S.data.cliente, past = pastTrips();
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent), standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+    const standalone = isStandalone();
     return `<div class="page-head"><div class="kicker">${ic('user', 'sm')} Perfil</div></div>
       <div class="passport">
         <img src="/assets/logo-on-red.png" alt="Todo Viajes" width="130" height="64">
@@ -672,7 +705,7 @@
       </div>
       ${passportBlock()}
       <div class="section"><div class="sec-head"><h3 class="d-md">Mis viajes</h3></div><div class="card">${(S.data.viajes || []).length ? S.data.viajes.slice().reverse().map((v) => `<button class="list-row tap" data-trip="${v.id}" data-go="viaje"><div class="bub" aria-hidden="true">${esc(v.bandera || '')}</div><div><div class="t">${esc(v.titulo)}</div><div class="d">${fmtRange(v.fecha_inicio, v.fecha_fin)}</div></div><div class="r">${pDate(v.fecha_fin) < today() ? 'Completado' : '<span class="badge red">Próximo</span>'}${ic('chev', 'sm')}</div></button>`).join('') : '<div class="empty-note">Aún no tienes viajes.</div>'}</div></div>
-      ${!standalone ? `<div class="section"><div class="card"><button class="list-row tap" data-act="install"><div class="bub">${ic('install')}</div><div><div class="t">Agrégala a tu pantalla de inicio</div><div class="d">${ios ? 'Toca Compartir y luego "Agregar a inicio"' : 'Ábrela como una app, sin descargar nada'}</div></div><div class="r">${ic('chev', 'sm')}</div></button></div></div>` : ''}
+      ${!standalone ? `<div class="section"><div class="card"><button class="list-row tap" data-act="install"><div class="bub">${ic('install')}</div><div><div class="t">Agrégala a tu pantalla de inicio</div><div class="d">Te mostramos cómo, paso a paso</div></div><div class="r">${ic('chev', 'sm')}</div></button></div></div>` : ''}
       <div class="section"><div class="sec-head"><h3 class="d-md">Todo Viajes</h3></div><div class="card">
         <a class="list-row tap" href="${waLink(agWa(), 'Hola, tengo una duda.')}" target="_blank" rel="noopener"><div class="bub" style="color:#1E9E52">${WA.replace('<svg', '<svg width="22" height="22" fill="#1E9E52"')}</div><div><div class="t">WhatsApp</div><div class="d">Estamos contigo si necesitas ayuda</div></div><div class="r">${ic('chev', 'sm')}</div></a>
         ${C.AGENCIA_TELEFONO ? `<a class="list-row tap" href="tel:${esc(C.AGENCIA_TELEFONO)}"><div class="bub">${ic('phone')}</div><div><div class="t">Llamar</div><div class="d">${esc(C.AGENCIA_TELEFONO)}</div></div><div class="r">${ic('chev', 'sm')}</div></a>` : ''}
@@ -681,11 +714,90 @@
       <div class="foot"><img src="/assets/logo.png" alt="" width="45" height="22">Mi Viaje · Tu viaje. Todo en un solo lugar.</div>`;
   }
 
+
+  // =====================================================================
+  // INSTALAR LA APP (guía paso a paso para iPhone y Android)
+  // =====================================================================
+  const UA = navigator.userAgent || '';
+  const DEV = {
+    ios: /iphone|ipad|ipod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    android: /android/i.test(UA),
+    inApp: /FBAN|FBAV|Instagram|Line\/|; wv\)|TikTok|Snapchat/i.test(UA),
+    iosOtro: /CriOS|FxiOS|EdgiOS|OPiOS/i.test(UA)
+  };
+  const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  let deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredInstall = e; const b = document.querySelector('[data-inst=prompt]'); if (b) b.hidden = false; });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; store.set('mv_instalada', '1'); logEvent('app_instalada', { via: 'android' }); closeInstall(); toast('¡Listo! Mi Viaje ya está en tu pantalla de inicio', 'check'); });
+  // Si ya la abrió desde su pantalla de inicio, lo registramos una vez para que su asesor lo sepa
+  function marcarInstalada() { if (isStandalone() && S.token && !store.get('mv_inst_log')) { store.set('mv_inst_log', '1'); logEvent('app_instalada', { via: DEV.ios ? 'iphone' : DEV.android ? 'android' : 'otro' }); } }
+
+  const SVG_SHARE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+  const SVG_ADD = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+  const SVG_DOTS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
+  const SVG_PHONE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/></svg>';
+
+  function instSteps(os) {
+    const chip = (icon, label) => `<span class="inst-chip">${icon}${label ? `<b>${label}</b>` : ''}</span>`;
+    if (os === 'ios') return [
+      ['Abre esta página en <b>Safari</b>', 'Es el navegador de la brújula azul. Si la abriste desde WhatsApp u otra app, copia la liga y pégala en Safari.', ''],
+      ['Toca el botón <b>Compartir</b>', 'Está abajo, al centro de la pantalla (o arriba a la derecha en iPad).', chip(SVG_SHARE, '')],
+      ['Desliza hacia abajo y toca <b>«Agregar a inicio»</b>', 'Si no lo ves, toca «Editar acciones» y actívalo.', chip(SVG_ADD, 'Agregar a inicio')],
+      ['Toca <b>«Agregar»</b> arriba a la derecha', 'Listo: el ícono rojo de Mi Viaje aparece en tu pantalla. Ábrela desde ahí y entra con tu celular y PIN.', chip('', 'Agregar')]
+    ];
+    return [
+      ['Abre esta página en <b>Chrome</b>', 'Si la abriste desde WhatsApp, toca los 3 puntos y elige «Abrir en Chrome».', ''],
+      ['Toca los <b>3 puntitos</b>', 'Están arriba a la derecha de la pantalla.', chip(SVG_DOTS, '')],
+      ['Toca <b>«Instalar app»</b> o <b>«Agregar a pantalla principal»</b>', 'El nombre cambia un poco según tu celular.', chip(SVG_PHONE, 'Instalar app')],
+      ['Confirma con <b>«Instalar»</b>', 'Listo: el ícono rojo de Mi Viaje aparece en tu pantalla. Ábrela desde ahí y entra con tu celular y PIN.', chip('', 'Instalar')]
+    ];
+  }
+  let instOS = DEV.ios ? 'ios' : 'android';
+  function installHTML() {
+    if (isStandalone()) return `<div class="inst-head"><img src="/assets/icon-192.png" alt="" width="56" height="56"><div><h2 class="d-md">¡Ya la tienes instalada!</h2><p class="muted">Estás usando Mi Viaje como app.</p></div></div><button class="btn" data-inst="close">Entendido</button>`;
+    const steps = instSteps(instOS).map(([t, d, chip], i) => `<li class="inst-step" style="--i:${i}"><span class="inst-n">${i + 1}</span><div><div class="t">${t}</div><div class="d">${d}</div>${chip ? `<div class="inst-demo">${chip}</div>` : ''}</div></li>`).join('');
+    const ayuda = S.data ? waLink(agWa(), 'Hola, necesito ayuda para instalar Mi Viaje en mi celular.') : waLink(waNum(C.AGENCIA_WHATSAPP), 'Hola, necesito ayuda para instalar Mi Viaje en mi celular.');
+    return `<button class="inst-x" data-inst="close" aria-label="Cerrar">×</button>
+      <div class="inst-head"><img src="/assets/icon-192.png" alt="" width="56" height="56"><div><h2 class="d-md" id="inst-t">Instala Mi Viaje</h2><p class="muted">Tenla a un toque, como cualquier app. Sin descargar nada y sin ocupar espacio.</p></div></div>
+      ${DEV.android && !DEV.inApp ? `<button class="btn" data-inst="prompt" ${deferredInstall ? '' : 'hidden'}>${SVG_PHONE} Instalar ahora</button>` : ''}
+      <div class="inst-tabs" role="tablist"><button role="tab" data-os="ios" aria-selected="${instOS === 'ios'}">iPhone</button><button role="tab" data-os="android" aria-selected="${instOS === 'android'}">Android</button></div>
+      ${DEV.inApp ? `<div class="inst-warn">${ic('info', 'sm')}<span>Estás dentro de otra app. Copia la liga y ábrela en ${instOS === 'ios' ? 'Safari' : 'Chrome'} para poder instalarla.</span></div>` : ''}
+      <ol class="inst-steps">${steps}</ol>
+      <button class="btn ink" data-inst="copy">${ic('copy', 'sm')} Copiar liga de la app</button>
+      <a class="link" href="${ayuda}" target="_blank" rel="noopener"><u>¿Te atoraste? Te ayudamos por WhatsApp</u></a>`;
+  }
+  function openInstall() {
+    closeInstall();
+    const ov = document.createElement('div');
+    ov.className = 'inst-ov'; ov.id = 'inst-ov';
+    ov.innerHTML = `<div class="sheet inst" role="dialog" aria-modal="true" aria-labelledby="inst-t">${installHTML()}</div>`;
+    document.body.appendChild(ov); document.body.classList.add('no-scroll');
+    const bind = () => {
+      ov.querySelectorAll('[data-inst=close]').forEach((b) => b.onclick = closeInstall);
+      ov.querySelectorAll('[data-os]').forEach((b) => b.onclick = () => { instOS = b.dataset.os; ov.firstElementChild.innerHTML = installHTML(); bind(); });
+      const pr = ov.querySelector('[data-inst=prompt]');
+      if (pr) pr.onclick = async () => { if (!deferredInstall) return; deferredInstall.prompt(); try { await deferredInstall.userChoice; } catch (e) {} deferredInstall = null; pr.hidden = true; };
+      const cp = ov.querySelector('[data-inst=copy]');
+      if (cp) cp.onclick = async () => { const url = (C.APP_URL || location.origin).replace(/\/$/, '') + '/?instalar=1'; try { await navigator.clipboard.writeText(url); toast('Liga copiada. Pégala en ' + (instOS === 'ios' ? 'Safari' : 'Chrome'), 'check'); } catch (e) { toast(url); } };
+    };
+    bind();
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeInstall(); });
+    document.addEventListener('keydown', escInstall);
+    logEvent('ver_instalar', { os: instOS });
+  }
+  function escInstall(e) { if (e.key === 'Escape') closeInstall(); }
+  function closeInstall() { const o = document.getElementById('inst-ov'); if (o) o.remove(); document.body.classList.remove('no-scroll'); document.removeEventListener('keydown', escInstall); }
+  // Aviso en Inicio: solo en celular, si no está instalada y no lo cerró en los últimos 5 días
+  function installBanner(k) {
+    if (isStandalone() || !(DEV.ios || DEV.android) || store.get('mv_instalada')) return '';
+    const omit = Number(store.get('mv_inst_omit') || 0);
+    if (Date.now() - omit < 5 * 864e5) return '';
+    return `<div class="section reveal" style="--d:${k}"><div class="inst-banner"><img src="/assets/icon-192.png" alt="" width="44" height="44"><div class="tx"><b>Instala Mi Viaje</b><span>Tenla en tu pantalla de inicio, como app</span></div><button class="inst-go tap" data-act="install">Ver cómo</button><button class="inst-no" data-act="install-omit" aria-label="Ahora no">×</button></div></div>`;
+  }
+
   // =====================================================================
   // EVENTOS
   // =====================================================================
-  let deferredInstall = null;
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredInstall = e; });
   const keepScroll = (fn) => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
   let lastY = 0;
@@ -718,7 +830,8 @@
       logEvent('compartir_viaje');
       if (navigator.share) { try { await navigator.share({ text: t }); } catch (e) {} } else { try { await navigator.clipboard.writeText(t); toast('Texto copiado', 'check'); } catch (e) {} }
     });
-    act('install', async () => { if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; } else toast('Menú del navegador → "Agregar a inicio"', 'install'); });
+    act('install', () => openInstall());
+    act('install-omit', (e) => { store.set('mv_inst_omit', String(Date.now())); const s = e.currentTarget.closest('.section'); if (s) s.remove(); });
   }
 
   async function toggleCheck(b) {
@@ -776,5 +889,9 @@
   if (!C.SUPABASE_URL || C.SUPABASE_URL.includes('TU-PROYECTO')) {
     $root.innerHTML = '<div class="empty-state"><h2 class="d-lg">Falta configurar</h2><p class="muted">Agrega la URL y la clave pública de Supabase en config.js</p></div>';
   } else if (S.token) load(); else renderLogin();
+  if (/[?&]instalar=1/.test(location.search)) {
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    if (!isStandalone()) setTimeout(openInstall, 900);
+  }
   document.addEventListener('visibilitychange', () => { if (!document.hidden && S.token && S.data) load(true); });
 })();
