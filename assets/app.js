@@ -312,6 +312,7 @@
       <nav class="tabbar" aria-label="Navegación principal">${TABS.map(([k, n, i]) => `<button class="tab ${S.tab === k ? 'on' : ''}" data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${ic(i)}<span>${n}</span></button>`).join('')}</nav>`;
     bindApp();
     afterRender(quiet);
+    if (S.tab === 'inicio') { cargarClima(); tickFlights(); } else clearInterval(flyTimer);
     if (S.firstTime) { S.firstTime = false; setTimeout(() => confetti(), 500); }
   }
 
@@ -403,6 +404,7 @@
       <div class="topbar"><img src="/assets/logo-white.png" alt="Todo Viajes" width="61" height="30"><span class="avatar" aria-hidden="true">${initial(c.primer_nombre)}</span></div>
       <div class="hello">Hola, <b>${esc(c.primer_nombre)}</b></div>
       <div class="stage-chip"><i></i>${chip}</div>
+      <div class="hero-temp" id="hero-temp" hidden></div>
     </header>`;
   }
   function ticketBlock(v, st) {
@@ -438,6 +440,8 @@
     const st = stageOf(v), pr = progress(v), np = nextPayment(v);
     let html = heroBlock(v, st) + ticketBlock(v, st);
     let k = 1;
+    html += flightCard(v, k++);
+    html += climaSlot(v, st, k++);
     html += installBanner(k++);
     if (st.k === 'futuro' || st.k === 'inminente') {
       html += nextStep(v, np, k++);
@@ -449,6 +453,7 @@
       </div></div>`;
       html += keySegments(v, false, k++);
       if (st.k === 'inminente') html += checklistBlock(v, 'Antes de viajar', k++);
+      html += cotizarCard(k++);
     } else if (st.k === 'hoy') {
       html += todayBlock(v, isoDay(today()), 'Tu día de viaje', k++) + keySegments(v, true, k++) + docsBlock(v, k++);
     } else if (st.k === 'durante') {
@@ -499,6 +504,7 @@
       else { if (s.inicio) meta.push(['Cuándo', segDate(s.inicio) + ' · ' + segTime(s.inicio)]); if (s.fin) meta.push(['Termina', segDate(s.fin) + ' · ' + segTime(s.fin)]); }
     }
     if (s.proveedor) meta.push([s.tipo === 'vuelo' ? 'Aerolínea' : 'Proveedor', s.proveedor]);
+    if (flightNum(s) && !Object.keys(det).some((k) => /vuelo/i.test(k))) meta.push(['Vuelo', flightNum(s)]);
     if (s.localizador) meta.push(['Clave de reservación', s.localizador]);
     Object.keys(det).forEach((k) => { if (det[k]) meta.push([k, det[k]]); });
     return `<div class="seg">
@@ -507,6 +513,7 @@
       ${s.lugar ? `<div class="seg-place">${ic('pin', 'sm')}<span>${mapLink(s.lugar)}</span></div>` : ''}
       ${meta.length ? `<div class="meta">${meta.map(([a, b]) => `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>` : ''}
       ${s.descripcion ? `<div class="seg-desc">${esc(s.descripcion)}</div>` : ''}
+      ${liveBtn(s)}
     </div>`;
   }
   function keySegments(v, compact, d) {
@@ -539,7 +546,7 @@
         <div class="meta"><div><span>Días</span><b>${dias}</b></div>${hotel ? `<div><span>Hospedaje</span><b>${esc(hotel.titulo)}</b></div>` : ''}</div>
         <button class="btn" data-act="share-trip">${ic('share', 'sm')} Compartir mi viaje</button>
       </div></div>
-      <div class="section reveal" style="--d:${d + 1}"><a class="next ink tap" href="${waLink(c.num, `Hola ${c.nombre.split(' ')[0]}, ya regresé de ${v.titulo}. ¡Quiero cotizar mi próximo viaje!`)}" target="_blank" rel="noopener"><span class="ic">${ic('compass')}</span><span class="t"><small>¿Listo para el siguiente?</small><strong>Cotiza tu próxima aventura</strong></span><span class="chev">${ic('chev')}</span></a></div>
+      <div class="section reveal" style="--d:${d + 1}"><a class="next ink tap" href="#" data-act="cotizar" data-origen="regreso" onclick="return false"><span class="ic">${ic('compass')}</span><span class="t"><small>¿Listo para el siguiente?</small><strong>Cotiza tu próxima aventura</strong></span><span class="chev">${ic('chev')}</span></a></div>
       <div class="section reveal" style="--d:${d + 2}"><button class="next tap" data-go="beneficios"><span class="ic">${ic('gift')}</span><span class="t"><small>Invita y viaja</small><strong>Comparte tu código ${esc(S.data.cliente.codigo_referido)}</strong></span><span class="chev">${ic('chev')}</span></button></div>`;
   }
   function viewSinViaje() {
@@ -548,7 +555,7 @@
         <div class="bub">${ic('compass', 'lg')}</div>
         <h1 class="d-lg" style="margin:0 0 8px">Hola, ${esc(c.primer_nombre)}</h1>
         <p class="muted" style="margin:0 auto;max-width:30ch">${past ? '¿Listo para tu siguiente aventura? Te ayudamos a planearla.' : 'Cuando reserves con Todo Viajes, todo tu viaje aparecerá aquí.'}</p>
-        <a class="btn" href="${waLink(agWa(), `Hola, soy ${c.primer_nombre}. ¡Quiero cotizar un viaje!`)}" target="_blank" rel="noopener">${ic('compass', 'sm')} Cotizar un viaje</a></div>
+        <button class="btn" data-act="cotizar" data-origen="sin_viaje">${ic('compass', 'sm')} Cotizar un viaje</button></div>
       ${past ? passportBlock() : ''}`;
   }
 
@@ -707,6 +714,7 @@
       <div class="section"><div class="sec-head"><h3 class="d-md">Mis viajes</h3></div><div class="card">${(S.data.viajes || []).length ? S.data.viajes.slice().reverse().map((v) => `<button class="list-row tap" data-trip="${v.id}" data-go="viaje"><div class="bub" aria-hidden="true">${esc(v.bandera || '')}</div><div><div class="t">${esc(v.titulo)}</div><div class="d">${fmtRange(v.fecha_inicio, v.fecha_fin)}</div></div><div class="r">${pDate(v.fecha_fin) < today() ? 'Completado' : '<span class="badge red">Próximo</span>'}${ic('chev', 'sm')}</div></button>`).join('') : '<div class="empty-note">Aún no tienes viajes.</div>'}</div></div>
       ${!standalone ? `<div class="section"><div class="card"><button class="list-row tap" data-act="install"><div class="bub">${ic('install')}</div><div><div class="t">Agrégala a tu pantalla de inicio</div><div class="d">Te mostramos cómo, paso a paso</div></div><div class="r">${ic('chev', 'sm')}</div></button></div></div>` : ''}
       <div class="section"><div class="sec-head"><h3 class="d-md">Todo Viajes</h3></div><div class="card">
+        <button class="list-row tap cot-row" data-act="cotizar" data-origen="perfil"><div class="bub" aria-hidden="true">✈️</div><div><div class="t">Quiero cotizar otro viaje o servicio</div><div class="d">Vuelos, hotel, paquetes, cruceros, Disney y más</div></div><div class="r">${ic('chev', 'sm')}</div></button>
         <a class="list-row tap" href="${waLink(agWa(), 'Hola, tengo una duda.')}" target="_blank" rel="noopener"><div class="bub" style="color:#1E9E52">${WA.replace('<svg', '<svg width="22" height="22" fill="#1E9E52"')}</div><div><div class="t">WhatsApp</div><div class="d">Estamos contigo si necesitas ayuda</div></div><div class="r">${ic('chev', 'sm')}</div></a>
         ${C.AGENCIA_TELEFONO ? `<a class="list-row tap" href="tel:${esc(C.AGENCIA_TELEFONO)}"><div class="bub">${ic('phone')}</div><div><div class="t">Llamar</div><div class="d">${esc(C.AGENCIA_TELEFONO)}</div></div><div class="r">${ic('chev', 'sm')}</div></a>` : ''}
         <button class="list-row tap" data-act="logout"><div class="bub">${ic('out')}</div><div><div class="t">Cerrar sesión</div><div class="d">Tu información queda protegida</div></div></button>
@@ -714,6 +722,239 @@
       <div class="foot"><img src="/assets/logo.png" alt="" width="45" height="22">Mi Viaje · Tu viaje. Todo en un solo lugar.</div>`;
   }
 
+
+
+  // =====================================================================
+  // VUELO EN VIVO (sin costo: abre el seguimiento público del vuelo)
+  // =====================================================================
+  const flightNum = (s) => {
+    if (!s || s.tipo !== 'vuelo') return '';
+    const det = s.detalles || {};
+    const raw = s.numero_vuelo || det['Número de vuelo'] || det['Numero de vuelo'] || det['Vuelo'] || det['vuelo'] || '';
+    const m = String(raw).toUpperCase().replace(/\s+/g, '').match(/^([A-Z0-9]{2,3}?)(\d{1,4}[A-Z]?)$/);
+    return m ? m[1] + ' ' + m[2] : '';
+  };
+  const liveUrl = (num) => 'https://www.google.com/search?q=' + encodeURIComponent(num.replace(' ', '') + ' vuelo');
+  const awareUrl = (num) => 'https://flightaware.com/live/flight/' + encodeURIComponent(num.replace(' ', ''));
+  // La hora del itinerario es la hora local del lugar: la convertimos a hora del celular para contar el tiempo
+  const segLocal = (iso) => { const d = new Date(iso); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes()); };
+  function liveBtn(s, big) {
+    const num = flightNum(s);
+    if (!num) return '';
+    return `<div class="live ${big ? 'big' : ''}"><a class="live-btn tap" href="${liveUrl(num)}" target="_blank" rel="noopener" data-live="${esc(num)}"><span class="live-dot" aria-hidden="true"></span><span class="tx"><b>Ver mi vuelo en vivo</b><small>Estado, terminal y puerta · ${esc(num)}</small></span>${ic('chev', 'sm')}</a>
+      <a class="live-alt" href="${awareUrl(num)}" target="_blank" rel="noopener" data-live="${esc(num)}">Otra opción: ver en FlightAware</a></div>`;
+  }
+  // Próximo vuelo en las siguientes 72 h (o despegando ahora)
+  function proximoVuelo(v) {
+    const now = Date.now();
+    return (v.segmentos || []).filter((s) => s.tipo === 'vuelo' && s.inicio)
+      .map((s) => ({ s, t: segLocal(s.inicio).getTime() }))
+      .filter((x) => x.t - now <= 72 * 36e5 && now - x.t <= 2 * 36e5)
+      .sort((a, b) => a.t - b.t)[0] || null;
+  }
+  function faltaTxt(ms) {
+    if (ms <= 0) return 'Despegando ahora';
+    const min = Math.round(ms / 6e4), h = Math.floor(min / 60), d = Math.floor(h / 24);
+    if (d >= 1) return `En ${d} ${d === 1 ? 'día' : 'días'}${h % 24 ? ' y ' + (h % 24) + ' h' : ''}`;
+    if (h >= 1) return `En ${h} h ${min % 60} min`;
+    return `En ${min} min`;
+  }
+  function flightCard(v, d) {
+    const pv = proximoVuelo(v);
+    if (!pv) return '';
+    const s = pv.s, num = flightNum(s), codes = flightCodes(s.titulo), ms = pv.t - Date.now();
+    const intl = /internacional/i.test(v.incluye || '') || (v.bandera && v.bandera !== '🇲🇽');
+    const tips = [];
+    if (ms > 24 * 36e5) tips.push(['check', 'Haz tu check-in en línea 24 h antes del vuelo']);
+    tips.push(['clock', `Llega al aeropuerto ${intl ? '3' : '2'} horas antes`]);
+    if (s.localizador) tips.push(['ticket', `Tu clave de reservación: ${s.localizador}`]);
+    return `<div class="section reveal" style="--d:${d}"><div class="fly">
+      <div class="fly-top"><span class="kicker">${ic('plane', 'sm')} Tu vuelo</span><span class="fly-count" data-dep="${pv.t}">${faltaTxt(ms)}</span></div>
+      ${codes ? `<div class="fly-route"><b>${codes[0]}</b><span class="fly-line" aria-hidden="true"><i>${ic('plane', 'sm')}</i></span><b>${codes[1]}</b></div>` : `<div class="fly-title">${esc(s.titulo)}</div>`}
+      <div class="fly-meta">${segDate(s.inicio)} · ${segTime(s.inicio)}${s.proveedor ? ' · ' + esc(s.proveedor) : ''}${num ? ' · <b>' + esc(num) + '</b>' : ''}</div>
+      ${num ? liveBtn(s, true) : `<div class="fly-hint">${ic('info', 'sm')} Pide a tu asesor tu número de vuelo para verlo en vivo.</div>`}
+      <ul class="fly-tips">${tips.map(([i, t]) => `<li>${ic(i, 'sm')}<span>${esc(t)}</span></li>`).join('')}</ul>
+    </div></div>`;
+  }
+  let flyTimer = null;
+  function tickFlights() {
+    clearInterval(flyTimer);
+    const els = document.querySelectorAll('.fly-count[data-dep]');
+    if (!els.length) return;
+    flyTimer = setInterval(() => els.forEach((e) => { e.textContent = faltaTxt(Number(e.dataset.dep) - Date.now()); }), 30000);
+  }
+
+  // =====================================================================
+  // CLIMA DEL DESTINO (MET Norway, vía la función mv-clima)
+  // =====================================================================
+  const CIELO = {
+    despejado: ['Soleado', 'sol'], parcial: ['Parcialmente nublado', 'solnube'], nublado: ['Nublado', 'nube'], niebla: ['Neblina', 'niebla'],
+    lluvia: ['Lluvia', 'lluvia'], lluvia_fuerte: ['Lluvias fuertes', 'lluvia'], tormenta: ['Tormenta', 'tormenta'], nieve: ['Nieve', 'nieve']
+  };
+  function wxIcon(cielo, noche, size) {
+    const k = (CIELO[cielo] || CIELO.parcial)[1];
+    const sun = noche ? '<circle class="wx-moon" cx="22" cy="22" r="10"/><circle cx="27" cy="18" r="9" class="wx-moon-cut"/>'
+      : '<g class="wx-sun"><circle cx="22" cy="22" r="8"/><g class="wx-rays">' + [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<line x1="22" y1="7" x2="22" y2="3" transform="rotate(${a} 22 22)"/>`).join('') + '</g></g>';
+    const cloud = (x, y, cls) => `<g transform="translate(${x} ${y})"><path class="wx-cloud ${cls || ''}" d="M10 26h22a8 8 0 0 0 0-16 11 11 0 0 0-21-2A9 9 0 0 0 10 26z"/></g>`;
+    const drops = '<g class="wx-drops"><line x1="16" y1="38" x2="14" y2="44"/><line x1="24" y1="38" x2="22" y2="44"/><line x1="32" y1="38" x2="30" y2="44"/></g>';
+    let g = '';
+    if (k === 'sol') g = sun;
+    else if (k === 'solnube') g = `<g transform="translate(-4 -4) scale(.85)">${sun}</g>` + cloud(4, 10);
+    else if (k === 'nube') g = cloud(-2, 2, 'back') + cloud(4, 8);
+    else if (k === 'niebla') g = cloud(2, 0) + '<g class="wx-fog"><line x1="8" y1="34" x2="40" y2="34"/><line x1="12" y1="40" x2="36" y2="40"/></g>';
+    else if (k === 'lluvia') g = cloud(2, 0) + drops;
+    else if (k === 'tormenta') g = cloud(2, 0) + '<path class="wx-bolt" d="M24 30l-5 9h5l-3 8 9-11h-5l3-6z"/>';
+    else if (k === 'nieve') g = cloud(2, 0) + '<g class="wx-snow"><circle cx="16" cy="40" r="1.8"/><circle cx="24" cy="44" r="1.8"/><circle cx="32" cy="40" r="1.8"/></g>';
+    return `<svg class="wx wx-${k}" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">${g}</svg>`;
+  }
+  const climaCache = {};
+  async function getClima(c) {
+    const key = `mv_clima_${Number(c.lat).toFixed(2)}_${Number(c.lon).toFixed(2)}`;
+    const mem = climaCache[key]; if (mem && Date.now() - mem.t < 20 * 6e4) return mem.d;
+    try { const raw = store.get(key); if (raw) { const x = JSON.parse(raw); if (Date.now() - x.t < 20 * 6e4) { climaCache[key] = x; return x.d; } } } catch (e) {}
+    const r = await fetch(`${C.SUPABASE_URL}/functions/v1/mv-clima?op=pronostico&lat=${c.lat}&lon=${c.lon}`);
+    if (!r.ok) throw new Error('clima');
+    const d = await r.json();
+    const x = { t: Date.now(), d }; climaCache[key] = x; store.set(key, JSON.stringify(x));
+    return d;
+  }
+  function climaModo(v, st) {
+    if (!v.clima || st.k === 'despues') return null;
+    if (st.k === 'hoy' || st.k === 'durante') return 'ahora';
+    if (st.d <= 3) return 'ahora';
+    if (st.d <= 10) return 'pronostico';
+    if (st.d <= 14) return 'pronto';
+    return null;
+  }
+  function climaSlot(v, st, d) {
+    const modo = climaModo(v, st);
+    if (!modo) return '';
+    const lugar = esc(String(v.clima.lugar || v.destino || v.titulo).split(',')[0]);
+    if (modo === 'pronto') {
+      const listo = new Date(pDate(v.fecha_inicio).getTime() - 10 * 864e5);
+      return `<div class="section reveal" style="--d:${d}"><div class="wx-card wx-soon">${wxIcon('parcial', false, 44)}<div><b>Clima en ${lugar}</b><span>Tu pronóstico estará listo el ${listo.getDate()} ${MES3[listo.getMonth()]}, 10 días antes de tu viaje.</span></div></div></div>`;
+    }
+    return `<div class="section reveal" style="--d:${d}" id="clima" data-modo="${modo}"><div class="wx-card wx-load" aria-busy="true"><div class="wx-skel"></div><span>Consultando el clima en ${lugar}…</span></div></div>`;
+  }
+  function consejos(dias) {
+    const out = [];
+    const lluvia = dias.find((x) => x.lluvia_mm >= 1 || /lluvia|tormenta/.test(x.cielo));
+    const tormenta = dias.find((x) => x.cielo === 'tormenta');
+    const max = Math.max(...dias.map((x) => x.max)), min = Math.min(...dias.map((x) => x.min));
+    if (tormenta) out.push(['⛈️', `Posibles tormentas el ${fmtDay(tormenta.fecha)}: planea actividades bajo techo por si acaso.`]);
+    else if (lluvia) out.push(['☔', `Lleva paraguas o impermeable: puede llover el ${fmtDay(lluvia.fecha)}.`]);
+    if (max >= 30) out.push(['🧴', `Bloqueador, gorra y mucha agua: llegará a ${max}°.`]);
+    else if (max >= 25 && !out.length) out.push(['😎', 'Clima agradable: ropa fresca y lentes de sol.']);
+    if (min <= 12) out.push(['🧥', `Lleva una chamarra para la noche: bajará a ${min}°.`]);
+    if (!out.length) out.push(['🌤️', 'Clima templado: lleva ropa en capas y disfruta.']);
+    return out.slice(0, 2);
+  }
+  function climaHTML(v, st, w, modo) {
+    const lugar = esc(String(v.clima.lugar || v.destino).split(',')[0]);
+    const ini = v.fecha_inicio, fin = v.fecha_fin, hoy = isoDay(today());
+    let dias = (w.dias || []).filter((x) => x.fecha >= ini && x.fecha <= fin);
+    if (modo === 'ahora' && (st.k === 'durante' || st.k === 'hoy')) dias = (w.dias || []).filter((x) => x.fecha >= hoy && x.fecha <= fin);
+    if (!dias.length) dias = (w.dias || []).filter((x) => x.fecha >= hoy).slice(0, 5);
+    const faltan = (v.fecha_fin > (w.dias || []).slice(-1)[0]?.fecha);
+    const strip = `<div class="wx-days">${dias.slice(0, 8).map((x, i) => { const dd = pDate(x.fecha); return `<div class="wx-day" style="--i:${i}"><small>${x.fecha === hoy ? 'Hoy' : DIAS[dd.getDay()] + ' ' + dd.getDate()}</small>${wxIcon(x.cielo, false, 30)}<b>${x.max}°</b><span>${x.min}°</span>${x.lluvia_mm >= 1 ? `<em>💧${x.lluvia_mm >= 10 ? ' fuerte' : ''}</em>` : ''}</div>`; }).join('')}</div>`;
+    const tips = `<ul class="wx-tips">${consejos(dias).map(([e, t]) => `<li><span aria-hidden="true">${e}</span>${esc(t)}</li>`).join('')}</ul>`;
+    const nota = `<div class="wx-src">Pronóstico: MET Norway${faltan ? ' · los últimos días aparecerán conforme se acerque tu viaje' : ''}</div>`;
+    if (modo === 'ahora') {
+      const a = w.ahora || {}, cat = CIELO[a.cielo] || CIELO.parcial;
+      return `<div class="wx-card wx-live wx-t-${a.noche && a.cielo === 'despejado' ? 'noche' : cat[1]}">
+        <div class="wx-head"><span class="kicker"><i class="live-dot sm"></i> Ahora en ${lugar}</span></div>
+        <div class="wx-now">${wxIcon(a.cielo, a.noche, 76)}<div><div class="wx-temp"><span data-temp="${a.temp}">${a.temp}</span>°</div><div class="wx-desc">${cat[0]}</div></div></div>
+        <div class="wx-chips"><span>💧 ${a.humedad}% humedad</span><span>🌬️ ${a.viento_kmh} km/h</span>${dias[0] ? `<span>↑${dias[0].max}° ↓${dias[0].min}°</span>` : ''}</div>
+        ${strip}${tips}${nota}</div>`;
+    }
+    return `<div class="wx-card wx-fore">
+      <div class="wx-head"><span class="kicker">${wxIcon('despejado', false, 16)} Así estará el clima en ${lugar}</span></div>
+      ${strip}${tips}${nota}</div>`;
+  }
+  async function cargarClima() {
+    const slot = document.getElementById('clima');
+    const v = currentTrip();
+    if (!slot || !v || !v.clima) return;
+    const st = stageOf(v), modo = slot.dataset.modo;
+    try {
+      const w = await getClima(v.clima);
+      if (!document.body.contains(slot)) return;
+      slot.innerHTML = climaHTML(v, st, w, modo);
+      // número de temperatura que cuenta hasta el valor real
+      const t = slot.querySelector('[data-temp]');
+      if (t && !REDUCED) { const fin = Number(t.dataset.temp), t0 = performance.now(); const step = (n) => { const k = Math.min(1, (n - t0) / 900), e = 1 - Math.pow(1 - k, 3); t.textContent = Math.round(fin * e); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+      // chip de temperatura en la portada
+      const hc = document.getElementById('hero-temp');
+      if (hc && modo === 'ahora' && w.ahora) { hc.innerHTML = `${wxIcon(w.ahora.cielo, w.ahora.noche, 18)} ${w.ahora.temp}° en ${esc(String(v.clima.lugar || v.destino).split(',')[0])}`; hc.hidden = false; }
+    } catch (e) { slot.remove(); }
+  }
+
+
+  // =====================================================================
+  // COTIZAR OTRO VIAJE O SERVICIO (va directo al WhatsApp del CRM)
+  // =====================================================================
+  const SERV_DEF = ['Vuelos', 'Hotel', 'Paquete / Circuito', 'Crucero', 'Disney', 'Autobús', 'Traslados', 'Grupos', 'Bodas / XV años', 'Otro'];
+  const SERV_EMOJI = { 'Vuelos': '✈️', 'Hotel': '🏨', 'Paquete / Circuito': '🧳', 'Crucero': '🚢', 'Disney': '🏰', 'Autobús': '🚌', 'Traslados': '🚐', 'Grupos': '👥', 'Bodas / XV años': '💍', 'Chárter Todo Viajes': '🛩️', 'Otro': '✨' };
+  const waVentas = () => waNum((S.data && S.data.promo && S.data.promo.whatsapp_ventas) || C.AGENCIA_WHATSAPP);
+  const COT = { serv: [], destino: '', cuando: '', adultos: 2, menores: 0 };
+  function cotMensaje() {
+    const c = S.data.cliente;
+    const partes = [];
+    if (COT.serv.length) partes.push(COT.serv.join(', '));
+    if (COT.destino.trim()) partes.push('a ' + COT.destino.trim());
+    let txt = `Hola, soy ${c.nombre} (cliente Mi Viaje · código ${c.codigo_referido}). `;
+    txt += partes.length ? `Me interesa cotizar: ${partes.join(' ')}.` : 'Me interesa cotizar un viaje.';
+    if (COT.cuando.trim()) txt += `\nFechas: ${COT.cuando.trim()}.`;
+    txt += `\nViajeros: ${COT.adultos} ${COT.adultos === 1 ? 'adulto' : 'adultos'}${COT.menores ? ` y ${COT.menores} ${COT.menores === 1 ? 'menor' : 'menores'}` : ''}.`;
+    return txt;
+  }
+  function cotHTML() {
+    const lista = (S.data && S.data.servicios && S.data.servicios.length) ? S.data.servicios : SERV_DEF;
+    const step = (k, n, lbl) => `<div class="cot-step"><span>${lbl}</span><div><button type="button" data-cot-menos="${k}" aria-label="Menos ${lbl}">−</button><b>${n}</b><button type="button" data-cot-mas="${k}" aria-label="Más ${lbl}">+</button></div></div>`;
+    return `<button class="inst-x" data-cot="close" aria-label="Cerrar">×</button>
+      <div class="inst-head"><span class="cot-ic" aria-hidden="true">${ic('compass')}</span><div><h2 class="d-md" id="cot-t">¿Qué te gustaría?</h2><p class="muted">Cuéntanos y un asesor de Todo Viajes te responde por WhatsApp.</p></div></div>
+      <div class="cot-lbl">Elige uno o varios</div>
+      <div class="cot-chips">${lista.map((x) => `<button type="button" class="cot-chip tap ${COT.serv.includes(x) ? 'on' : ''}" data-cot-serv="${esc(x)}" aria-pressed="${COT.serv.includes(x)}"><span aria-hidden="true">${SERV_EMOJI[x] || '✨'}</span>${esc(x)}</button>`).join('')}</div>
+      <label class="field"><span>¿A dónde? <small class="muted">(opcional)</small></span><input id="cot-destino" value="${esc(COT.destino)}" placeholder="Ej. Cancún, Europa, Disney Orlando…" autocomplete="off"></label>
+      <label class="field"><span>¿Cuándo? <small class="muted">(opcional)</small></span><input id="cot-cuando" value="${esc(COT.cuando)}" placeholder="Ej. diciembre, Semana Santa, 15 al 20 de mayo" autocomplete="off"></label>
+      <div class="cot-lbl" style="margin-top:18px">¿Quiénes viajan?</div>
+      ${step('adultos', COT.adultos, 'Adultos')}${step('menores', COT.menores, 'Menores')}
+      <button class="btn wa" data-cot="enviar">${WA.replace('<svg', '<svg width="22" height="22" fill="#fff"')} Enviar por WhatsApp</button>
+      <p class="small muted" style="text-align:center;margin:10px 0 0">Se abre WhatsApp con tu mensaje listo. Solo toca enviar.</p>`;
+  }
+  function openCotizar(origen) {
+    closeInstall(); closeCotizar();
+    const ov = document.createElement('div');
+    ov.className = 'inst-ov'; ov.id = 'cot-ov';
+    ov.innerHTML = `<div class="sheet inst cot" role="dialog" aria-modal="true" aria-labelledby="cot-t">${cotHTML()}</div>`;
+    document.body.appendChild(ov); document.body.classList.add('no-scroll');
+    const sh = ov.firstElementChild;
+    const guardar = () => { const d = sh.querySelector('#cot-destino'), w = sh.querySelector('#cot-cuando'); if (d) COT.destino = d.value; if (w) COT.cuando = w.value; };
+    const repintar = () => { guardar(); const y = sh.scrollTop; sh.innerHTML = cotHTML(); sh.scrollTop = y; bind(); };
+    const bind = () => {
+      sh.querySelectorAll('[data-cot=close]').forEach((b) => b.onclick = closeCotizar);
+      sh.querySelectorAll('[data-cot-serv]').forEach((b) => b.onclick = () => { const x = b.dataset.cotServ, i = COT.serv.indexOf(x); if (i > -1) COT.serv.splice(i, 1); else COT.serv.push(x); haptic(); repintar(); });
+      sh.querySelectorAll('[data-cot-mas]').forEach((b) => b.onclick = () => { const k = b.dataset.cotMas; COT[k] = Math.min(20, COT[k] + 1); repintar(); });
+      sh.querySelectorAll('[data-cot-menos]').forEach((b) => b.onclick = () => { const k = b.dataset.cotMenos; COT[k] = Math.max(k === 'adultos' ? 1 : 0, COT[k] - 1); repintar(); });
+      const env = sh.querySelector('[data-cot=enviar]');
+      if (env) env.onclick = () => {
+        guardar();
+        logEvent('cotizar', { servicios: COT.serv.slice(), destino: COT.destino.trim().slice(0, 80), cuando: COT.cuando.trim().slice(0, 80), adultos: COT.adultos, menores: COT.menores, origen: origen || '' });
+        window.open(waLink(waVentas(), cotMensaje()), '_blank', 'noopener');
+        closeCotizar();
+        toast('¡Listo! Te responderemos por WhatsApp', 'check');
+        COT.serv = []; COT.destino = ''; COT.cuando = '';
+      };
+    };
+    bind();
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeCotizar(); });
+    document.addEventListener('keydown', escCotizar);
+  }
+  function escCotizar(e) { if (e.key === 'Escape') closeCotizar(); }
+  function closeCotizar() { const o = document.getElementById('cot-ov'); if (o) o.remove(); if (!document.getElementById('inst-ov')) document.body.classList.remove('no-scroll'); document.removeEventListener('keydown', escCotizar); }
+  function cotizarCard(d, titulo, sub) {
+    return `<div class="section reveal" style="--d:${d}"><button class="cot-card tap" data-act="cotizar" data-origen="inicio"><span class="cot-art" aria-hidden="true"><i>🌴</i><i>✈️</i><i>🏝️</i></span><span class="t"><small>${esc(sub || 'Cotiza sin compromiso')}</small><strong>${esc(titulo || '¿Planeando tu próxima escapada?')}</strong></span><span class="chev">${ic('chev')}</span></button></div>`;
+  }
 
   // =====================================================================
   // INSTALAR LA APP (guía paso a paso para iPhone y Android)
@@ -786,7 +1027,7 @@
     logEvent('ver_instalar', { os: instOS });
   }
   function escInstall(e) { if (e.key === 'Escape') closeInstall(); }
-  function closeInstall() { const o = document.getElementById('inst-ov'); if (o) o.remove(); document.body.classList.remove('no-scroll'); document.removeEventListener('keydown', escInstall); }
+  function closeInstall() { const o = document.getElementById('inst-ov'); if (o) o.remove(); if (!document.getElementById('cot-ov')) document.body.classList.remove('no-scroll'); document.removeEventListener('keydown', escInstall); }
   // Aviso en Inicio: solo en celular, si no está instalada y no lo cerró en los últimos 5 días
   function installBanner(k) {
     if (isStandalone() || !(DEV.ios || DEV.android) || store.get('mv_instalada')) return '';
@@ -830,7 +1071,9 @@
       logEvent('compartir_viaje');
       if (navigator.share) { try { await navigator.share({ text: t }); } catch (e) {} } else { try { await navigator.clipboard.writeText(t); toast('Texto copiado', 'check'); } catch (e) {} }
     });
+    $root.querySelectorAll('[data-live]').forEach((b) => b.addEventListener('click', () => logEvent('ver_vuelo', { vuelo: b.dataset.live })));
     act('install', () => openInstall());
+    act('cotizar', (e) => openCotizar(e.currentTarget.dataset.origen || ''));
     act('install-omit', (e) => { store.set('mv_inst_omit', String(Date.now())); const s = e.currentTarget.closest('.section'); if (s) s.remove(); });
   }
 
