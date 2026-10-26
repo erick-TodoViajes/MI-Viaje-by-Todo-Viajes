@@ -313,6 +313,7 @@
     bindApp();
     afterRender(quiet);
     if (S.tab === 'inicio') { cargarClima(); tickFlights(); } else clearInterval(flyTimer);
+    cargarVuelos();
     if (S.firstTime) { S.firstTime = false; setTimeout(() => confetti(), 500); }
   }
 
@@ -725,7 +726,7 @@
 
 
   // =====================================================================
-  // VUELO EN VIVO (sin costo: abre el seguimiento público del vuelo)
+  // VUELO EN VIVO (dentro de la app, con la función mv-vuelo)
   // =====================================================================
   const flightNum = (s) => {
     if (!s || s.tipo !== 'vuelo') return '';
@@ -734,26 +735,133 @@
     const m = String(raw).toUpperCase().replace(/\s+/g, '').match(/^([A-Z0-9]{2,3}?)(\d{1,4}[A-Z]?)$/);
     return m ? m[1] + ' ' + m[2] : '';
   };
-  const liveUrl = (num) => 'https://www.google.com/search?q=' + encodeURIComponent(num.replace(' ', '') + ' vuelo');
-  const awareUrl = (num) => 'https://flightaware.com/live/flight/' + encodeURIComponent(num.replace(' ', ''));
   // La hora del itinerario es la hora local del lugar: la convertimos a hora del celular para contar el tiempo
   const segLocal = (iso) => { const d = new Date(iso); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes()); };
+  const awareUrl = (num) => 'https://flightaware.com/live/flight/' + encodeURIComponent(num.replace(' ', ''));
+
+  // Panel en vivo DENTRO de la app (función mv-vuelo → AeroDataBox). Se llena después de pintar.
   function liveBtn(s, big) {
     const num = flightNum(s);
-    if (!num) return '';
-    return `<div class="live ${big ? 'big' : ''}"><a class="live-btn tap" href="${liveUrl(num)}" target="_blank" rel="noopener" data-live="${esc(num)}"><span class="live-dot" aria-hidden="true"></span><span class="tx"><b>Ver mi vuelo en vivo</b><small>Estado, terminal y puerta · ${esc(num)}</small></span>${ic('chev', 'sm')}</a>
-      <a class="live-alt" href="${awareUrl(num)}" target="_blank" rel="noopener" data-live="${esc(num)}">Otra opción: ver en FlightAware</a></div>`;
+    if (!num || !s.id) return '';
+    const x = vueloMem[s.id];
+    return `<div class="vivo ${big ? 'big' : 'compact'}" data-vivo="${esc(s.id)}" data-num="${esc(num)}">${x ? vivoHTML(x.d, num, big) : vivoCargando()}</div>`;
   }
-  // Próximo vuelo en las siguientes 72 h (o despegando ahora)
+  const vueloMem = {};
+  const vueloPend = {};
+  const VIVO_MS = 5 * 6e4; // en el celular volvemos a preguntar cada 5 min (el servidor decide si consulta de nuevo)
+  async function getVuelo(id, forzar) {
+    const m = vueloMem[id];
+    if (m && !forzar && Date.now() - m.t < VIVO_MS) return m.d;
+    if (!m && !forzar) { try { const x = JSON.parse(store.get('mv_vuelo_' + id) || 'null'); if (x && Date.now() - x.t < VIVO_MS) { vueloMem[id] = x; return x.d; } } catch (e) {} }
+    if (vueloPend[id]) return vueloPend[id];
+    vueloPend[id] = (async () => {
+      try {
+        const r = await fetch(C.SUPABASE_URL + '/functions/v1/mv-vuelo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: S.token, segmento: id }) });
+        const d = await r.json().catch(() => ({}));
+        const res = r.ok ? d : { modo: r.status === 401 ? 'sesion' : 'error' };
+        if (r.ok) { const x = { t: Date.now(), d: res }; vueloMem[id] = x; store.set('mv_vuelo_' + id, JSON.stringify(x)); }
+        return res;
+      } catch (e) { return m ? m.d : { modo: 'error' }; }
+      finally { delete vueloPend[id]; }
+    })();
+    return vueloPend[id];
+  }
+  function vivoCargando() {
+    return `<div class="vivo-load"><span class="vivo-radar" aria-hidden="true"></span><span>Buscando tu vuelo…</span></div>`;
+  }
+  const hace = (iso) => {
+    const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
+    return m < 1 ? 'justo ahora' : m < 60 ? `hace ${m} min` : `hace ${Math.floor(m / 60)} h`;
+  };
+  const fechaCorta = (iso) => { const d = new Date(iso); return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); };
+  // Hora programada vs. estimada (si cambió 5 min o más, la programada se tacha)
+  function vivoHora(p) {
+    if (!p) return '';
+    const prog = p.programada, est = p.real || p.estimada;
+    if (!prog && !est) return '';
+    const cambia = prog && est && Math.abs(Date.parse(est.utc) - Date.parse(prog.utc)) >= 5 * 6e4;
+    if (!cambia) return `<b class="vh">${esc((prog || est).hora)}</b>`;
+    const tarde = Date.parse(est.utc) > Date.parse(prog.utc);
+    return `<b class="vh ${tarde ? 'tarde' : 'antes'}">${esc(est.hora)}</b><s>${esc(prog.hora)}</s>`;
+  }
+  const dato = (k, v, vacio) => `<div class="vd ${v ? '' : 'vacio'}"><span>${k}</span><b>${esc(v || vacio || '—')}</b></div>`;
+  function vivoProgreso(v) {
+    if (!['en_vuelo', 'aproximando'].includes(v.estado)) return '';
+    const a = Date.parse((v.salida.real || v.salida.estimada || v.salida.programada || {}).utc || '');
+    const b = Date.parse((v.llegada.estimada || v.llegada.programada || {}).utc || '');
+    if (!isFinite(a) || !isFinite(b) || b <= a) return '';
+    const pct = Math.max(4, Math.min(96, ((Date.now() - a) / (b - a)) * 100));
+    const min = Math.max(0, Math.round((b - Date.now()) / 6e4));
+    return `<div class="vivo-prog"><div class="vp-bar"><i style="width:${pct.toFixed(1)}%"></i><em style="left:${pct.toFixed(1)}%">${ic('plane', 'sm')}</em></div><small>${min > 0 ? `Aterriza en ${min >= 60 ? Math.floor(min / 60) + ' h ' + (min % 60) + ' min' : min + ' min'}` : 'Aterrizando'}</small></div>`;
+  }
+  function vivoHTML(d, num, big) {
+    if (!d || d.modo === 'pasado' || d.modo === 'sin_numero' || d.modo === 'sesion') return '';
+    if (d.modo === 'pronto') {
+      return `<div class="vivo-msg">${ic('clock', 'sm')}<span>El estado en vivo de tu vuelo <b>${esc(num)}</b> aparece aquí ${d.disponible_desde ? 'desde el ' + esc(fechaCorta(d.disponible_desde)) : '2 días antes'}.</span></div>`;
+    }
+    if (d.modo !== 'vivo' || !d.vuelo) {
+      const txt = d.modo === 'sin_datos' ? 'La aerolínea todavía no publica información en vivo de este vuelo. Vuelve a revisar más tarde.' : 'El estado en vivo no está disponible en este momento.';
+      return `<div class="vivo-msg">${ic('info', 'sm')}<span>${txt} <a href="${awareUrl(num)}" target="_blank" rel="noopener" data-live="${esc(num)}">Ver en FlightAware</a></span></div>`;
+    }
+    const v = d.vuelo, sa = v.salida || {}, ll = v.llegada || {};
+    const top = `<div class="vivo-top"><span class="vivo-pill e-${esc(v.estado)}"><i class="live-dot sm" aria-hidden="true"></i>${esc(v.estado_txt)}</span>
+      <button class="vivo-upd tap" data-vivo-refresh="${esc(v.numero || num)}" aria-label="Actualizar estado del vuelo">${ic('clock', 'sm')}<span>${esc(hace(d.actualizado))}</span></button></div>`;
+    const cols = `<div class="vivo-cols">
+      <div class="vc"><small>Sale de ${esc(sa.iata || '')}</small>${vivoHora(sa)}<span class="vc-c">${esc(sa.ciudad || sa.aeropuerto || '')}</span></div>
+      <div class="vc r"><small>Llega a ${esc(ll.iata || '')}</small>${vivoHora(ll)}<span class="vc-c">${esc(ll.ciudad || ll.aeropuerto || '')}</span></div></div>`;
+    if (!big) {
+      const linea = [sa.terminal && 'Terminal ' + sa.terminal, sa.puerta && 'Puerta ' + sa.puerta, ll.banda && 'Banda ' + ll.banda].filter(Boolean).join(' · ');
+      return top + cols + vivoProgreso(v) + (linea ? `<div class="vivo-line">${esc(linea)}</div>` : '');
+    }
+    const datos = `<div class="vivo-datos">
+      ${dato('Terminal salida', sa.terminal)}${dato('Puerta', sa.puerta, 'Por asignar')}
+      ${sa.mostrador ? dato('Mostrador', sa.mostrador) : ''}
+      ${dato('Terminal llegada', ll.terminal)}${ll.banda || ['aproximando', 'aterrizo'].includes(v.estado) ? dato('Banda de equipaje', ll.banda, 'Por asignar') : ''}</div>`;
+    const pie = [v.aerolinea, v.avion].filter(Boolean).join(' · ');
+    const aviso = v.estado === 'cancelado' || v.estado === 'desviado' ? `<div class="vivo-alerta">${ic('info', 'sm')}<span>Escríbenos por WhatsApp y te ayudamos con tu vuelo.</span></div>` : '';
+    return top + cols + vivoProgreso(v) + datos + aviso + (pie ? `<div class="vivo-pie">${ic('plane', 'sm')}<span>${esc(pie)}</span></div>` : '');
+  }
+  function pintarVuelo(id, d) {
+    document.querySelectorAll(`[data-vivo="${id}"]`).forEach((el) => {
+      const h = vivoHTML(d, el.dataset.num, el.classList.contains('big'));
+      if (!h) { el.remove(); return; }
+      el.innerHTML = h; el.classList.add('ok');
+      el.querySelectorAll('[data-live]').forEach((b) => b.addEventListener('click', () => logEvent('ver_vuelo', { vuelo: b.dataset.live, via: 'flightaware' })));
+      el.querySelectorAll('[data-vivo-refresh]').forEach((b) => b.addEventListener('click', async () => {
+        if (b.classList.contains('girando')) return;
+        b.classList.add('girando');
+        const x = await getVuelo(id, Date.now() - ((vueloMem[id] || {}).t || 0) > 60e3);
+        setTimeout(() => pintarVuelo(id, x), 450);
+      }));
+    });
+  }
+  let vivoTimer = null;
+  function cargarVuelos() {
+    clearInterval(vivoTimer);
+    const ids = [...new Set([...document.querySelectorAll('[data-vivo]')].map((e) => e.dataset.vivo))];
+    if (!ids.length || !S.token) return;
+    // En Inicio, si ya está la tarjeta grande del vuelo, no repetimos el panel chico del mismo vuelo
+    ids.forEach((id) => { if (document.querySelector(`.vivo.big[data-vivo="${id}"]`)) document.querySelectorAll(`.vivo.compact[data-vivo="${id}"]`).forEach((e) => e.remove()); });
+    ids.forEach(async (id) => {
+      const d = await getVuelo(id);
+      pintarVuelo(id, d);
+      if (d && d.modo === 'vivo') {
+        const k = 'mv_vuelo_log_' + id + '_' + new Date().toDateString();
+        if (!store.get(k)) { store.set(k, '1'); logEvent('ver_vuelo', { vuelo: d.vuelo.numero, estado: d.vuelo.estado, via: 'app' }); }
+      }
+    });
+    vivoTimer = setInterval(() => { if (!document.hidden && S.token) ids.forEach(async (id) => pintarVuelo(id, await getVuelo(id))); }, VIVO_MS);
+  }
+  // Próximo vuelo en las siguientes 72 h (o de hoy, hasta 6 h después de la salida)
   function proximoVuelo(v) {
     const now = Date.now();
     return (v.segmentos || []).filter((s) => s.tipo === 'vuelo' && s.inicio)
       .map((s) => ({ s, t: segLocal(s.inicio).getTime() }))
-      .filter((x) => x.t - now <= 72 * 36e5 && now - x.t <= 2 * 36e5)
+      .filter((x) => x.t - now <= 72 * 36e5 && now - x.t <= 6 * 36e5) // sigue visible mientras vuela y al aterrizar (banda de equipaje)
       .sort((a, b) => a.t - b.t)[0] || null;
   }
   function faltaTxt(ms) {
-    if (ms <= 0) return 'Despegando ahora';
+    if (ms <= 0) return ms > -30 * 6e4 ? 'Despegando ahora' : 'Vuelo de hoy';
     const min = Math.round(ms / 6e4), h = Math.floor(min / 60), d = Math.floor(h / 24);
     if (d >= 1) return `En ${d} ${d === 1 ? 'día' : 'días'}${h % 24 ? ' y ' + (h % 24) + ' h' : ''}`;
     if (h >= 1) return `En ${h} h ${min % 60} min`;
@@ -772,7 +880,7 @@
       <div class="fly-top"><span class="kicker">${ic('plane', 'sm')} Tu vuelo</span><span class="fly-count" data-dep="${pv.t}">${faltaTxt(ms)}</span></div>
       ${codes ? `<div class="fly-route"><b>${codes[0]}</b><span class="fly-line" aria-hidden="true"><i>${ic('plane', 'sm')}</i></span><b>${codes[1]}</b></div>` : `<div class="fly-title">${esc(s.titulo)}</div>`}
       <div class="fly-meta">${segDate(s.inicio)} · ${segTime(s.inicio)}${s.proveedor ? ' · ' + esc(s.proveedor) : ''}${num ? ' · <b>' + esc(num) + '</b>' : ''}</div>
-      ${num ? liveBtn(s, true) : `<div class="fly-hint">${ic('info', 'sm')} Pide a tu asesor tu número de vuelo para verlo en vivo.</div>`}
+      ${num ? liveBtn(s, true) : `<div class="fly-hint">${ic('info', 'sm')} Pide a tu asesor tu número de vuelo para ver aquí su estado en vivo.</div>`}
       <ul class="fly-tips">${tips.map(([i, t]) => `<li>${ic(i, 'sm')}<span>${esc(t)}</span></li>`).join('')}</ul>
     </div></div>`;
   }
@@ -1071,7 +1179,6 @@
       logEvent('compartir_viaje');
       if (navigator.share) { try { await navigator.share({ text: t }); } catch (e) {} } else { try { await navigator.clipboard.writeText(t); toast('Texto copiado', 'check'); } catch (e) {} }
     });
-    $root.querySelectorAll('[data-live]').forEach((b) => b.addEventListener('click', () => logEvent('ver_vuelo', { vuelo: b.dataset.live })));
     act('install', () => openInstall());
     act('cotizar', (e) => openCotizar(e.currentTarget.dataset.origen || ''));
     act('install-omit', (e) => { store.set('mv_inst_omit', String(Date.now())); const s = e.currentTarget.closest('.section'); if (s) s.remove(); });
