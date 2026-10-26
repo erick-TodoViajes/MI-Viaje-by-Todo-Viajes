@@ -405,7 +405,7 @@
       <div class="topbar"><img src="/assets/logo-white.png" alt="Todo Viajes" width="61" height="30"><span class="avatar" aria-hidden="true">${initial(c.primer_nombre)}</span></div>
       <div class="hello">Hola, <b>${esc(c.primer_nombre)}</b></div>
       <div class="stage-chip"><i></i>${chip}</div>
-      <div class="hero-temp" id="hero-temp" hidden></div>
+      <button class="hero-temp" id="hero-temp" data-act="clima" hidden></button>
     </header>`;
   }
   function ticketBlock(v, st) {
@@ -514,7 +514,7 @@
       ${s.lugar ? `<div class="seg-place">${ic('pin', 'sm')}<span>${mapLink(s.lugar)}</span></div>` : ''}
       ${meta.length ? `<div class="meta">${meta.map(([a, b]) => `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>` : ''}
       ${s.descripcion ? `<div class="seg-desc">${esc(s.descripcion)}</div>` : ''}
-      ${liveBtn(s)}
+      ${s.tipo === 'vuelo' ? (flightNum(s) ? liveBtn(s) + numCambiar(s) : numAgregar(s)) : ''}
     </div>`;
   }
   function keySegments(v, compact, d) {
@@ -835,6 +835,97 @@
       }));
     });
   }
+
+  // ---------- El cliente agrega su número de vuelo (si el asesor no lo puso) ----------
+  const AEROL = { volaris: 'Y4', viva: 'VB', vivaaerobus: 'VB', aeromexico: 'AM', magnicharters: 'UJ', tar: 'YQ', calafia: 'A7',
+    american: 'AA', united: 'UA', delta: 'DL', alaska: 'AS', southwest: 'WN', jetblue: 'B6', spirit: 'NK', frontier: 'F9',
+    copa: 'CM', avianca: 'AV', latam: 'LA', iberia: 'IB', 'air europa': 'UX', 'air canada': 'AC', westjet: 'WS',
+    'air france': 'AF', klm: 'KL', lufthansa: 'LH', 'british airways': 'BA', turkish: 'TK', emirates: 'EK', qatar: 'QR', arajet: 'DM', sky: 'H2' };
+  function codigoAerolinea(nombre) {
+    const n = String(nombre || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').trim();
+    if (!n) return '';
+    const k = Object.keys(AEROL).sort((a, b) => b.length - a.length).find((x) => n.includes(x));
+    return k ? AEROL[k] : '';
+  }
+  // "1052" + Volaris → "Y4 1052"; '' vacío; null si no se entiende
+  function interpretarNum(valor, aerolinea) {
+    const v = String(valor || '').toUpperCase().replace(/[\s-]/g, '');
+    if (!v) return '';
+    if (/^\d{1,4}[A-Z]?$/.test(v)) { const c = codigoAerolinea(aerolinea); return c ? c + ' ' + v : null; }
+    const m = v.match(/^([A-Z]{3})(\d{1,4}[A-Z]?)$/) || v.match(/^([A-Z0-9]{2})(\d{1,4}[A-Z]?)$/);
+    return m ? m[1] + ' ' + m[2] : null;
+  }
+  function numAgregar(s, big) {
+    if (!s || s.tipo !== 'vuelo' || !s.id) return '';
+    return `<button class="num-add tap ${big ? 'big' : ''}" data-act="num-vuelo" data-seg="${esc(s.id)}"><span class="num-ic" aria-hidden="true">${ic('plane', 'sm')}</span><span class="t"><b>Agrega tu número de vuelo</b><small>Y síguelo en vivo aquí: estado, terminal y puerta</small></span><span class="num-plus" aria-hidden="true">+</span></button>`;
+  }
+  function numCambiar(s) {
+    if (!s || s.numero_vuelo_por !== 'cliente') return '';
+    return `<button class="num-edit" data-act="num-vuelo" data-seg="${esc(s.id)}">${ic('copy', 'sm')} Lo agregaste tú · Cambiar número</button>`;
+  }
+  function findSeg(id) { for (const v of (S.data && S.data.viajes) || []) { const s = (v.segmentos || []).find((x) => x.id === id); if (s) return s; } return null; }
+  function numHTML(s, val, msg) {
+    const prev = interpretarNum(val, s.proveedor);
+    const cod = codigoAerolinea(s.proveedor);
+    let ayuda = '';
+    if (msg) ayuda = `<div class="num-msg err">${esc(msg)}</div>`;
+    else if (prev) ayuda = `<div class="num-msg ok">${ic('check', 'sm')} Se guardará como <b>${esc(prev)}</b></div>`;
+    else if (prev === null) ayuda = `<div class="num-msg err">${/^\d+$/.test(String(val).trim()) ? 'Agrega también las letras de la aerolínea (ej. Y4 1052).' : 'Revisa el formato: letras de la aerolínea + número (ej. Y4 1052).'}</div>`;
+    const ruta = flightCodes(s.titulo);
+    return `<button class="inst-x" data-num="close" aria-label="Cerrar">×</button>
+      <div class="inst-head"><span class="cot-ic" aria-hidden="true">${ic('plane')}</span><div><h2 class="d-md" id="num-t">Tu número de vuelo</h2><p class="muted">${ruta ? esc(ruta[0]) + ' → ' + esc(ruta[1]) : esc(s.titulo)}${s.inicio ? ' · ' + segDate(s.inicio) : ''}${s.proveedor ? ' · ' + esc(s.proveedor) : ''}</p></div></div>
+      <div class="pase" aria-hidden="true"><div><small>Pasajero</small><b>${esc((S.data.cliente.primer_nombre || '').toUpperCase())}</b></div><div class="pase-num"><small>Vuelo</small><b>${esc(prev || (cod ? cod + ' 1234' : 'Y4 1234'))}</b></div><div><small>Puerta</small><b>—</b></div></div>
+      <p class="small muted" style="margin:0 0 12px">Lo encuentras en tu pase de abordar, en el correo de confirmación de la aerolínea o en la app de la aerolínea.</p>
+      <label class="field"><span>Número de vuelo</span><input id="num-in" value="${esc(val)}" placeholder="${cod ? 'Ej. ' + cod + ' 1052 o solo 1052' : 'Ej. Y4 1052'}" autocomplete="off" autocapitalize="characters" inputmode="text" maxlength="10"></label>
+      <div id="num-ayuda">${ayuda}</div>
+      <button class="btn" data-num="guardar" ${prev ? '' : 'disabled'}>Guardar y seguir mi vuelo</button>
+      ${s.numero_vuelo && s.numero_vuelo_por === 'cliente' ? '<button class="btn ghost" data-num="quitar" style="margin-top:8px">Quitar número</button>' : ''}`;
+  }
+  function openNumVuelo(id) {
+    const s = findSeg(id);
+    if (!s) return;
+    closeNumVuelo();
+    const ov = document.createElement('div');
+    ov.className = 'inst-ov'; ov.id = 'num-ov';
+    ov.innerHTML = `<div class="sheet inst num" role="dialog" aria-modal="true" aria-labelledby="num-t">${numHTML(s, s.numero_vuelo || '')}</div>`;
+    document.body.appendChild(ov); document.body.classList.add('no-scroll');
+    const sh = ov.firstElementChild;
+    const guardar = async (valor) => {
+      const btns = sh.querySelectorAll('[data-num=guardar],[data-num=quitar]'); btns.forEach((b) => { b.disabled = true; });
+      const g = sh.querySelector('[data-num=guardar]'); if (g && valor) g.textContent = 'Guardando…';
+      try {
+        const r = await rpc('mv_numero_vuelo', { p_token: S.token, p_segmento: id, p_numero: valor });
+        if (!r || r.error) throw new Error(r && r.error === 'sesion' ? 'Tu sesión venció. Vuelve a entrar.' : (r && r.error) || 'No se pudo guardar');
+        delete vueloMem[id]; store.del('mv_vuelo_' + id);
+        closeNumVuelo(); haptic();
+        toast(valor ? '¡Listo! Ya puedes seguir tu vuelo' : 'Número quitado', 'check');
+        if (valor && !REDUCED) setTimeout(() => confetti(), 250);
+        load(true);
+      } catch (e) {
+        const inp = sh.querySelector('#num-in'); sh.innerHTML = numHTML(s, inp ? inp.value : valor, e.message); bind();
+      }
+    };
+    const bind = () => {
+      sh.querySelectorAll('[data-num=close]').forEach((b) => b.onclick = closeNumVuelo);
+      const inp = sh.querySelector('#num-in');
+      if (inp) inp.oninput = () => {
+        const prev = interpretarNum(inp.value, s.proveedor);
+        const tmp = document.createElement('div'); tmp.innerHTML = numHTML(s, inp.value);
+        sh.querySelector('#num-ayuda').innerHTML = tmp.querySelector('#num-ayuda').innerHTML;
+        sh.querySelector('.pase-num b').textContent = tmp.querySelector('.pase-num b').textContent;
+        sh.querySelector('[data-num=guardar]').disabled = !prev;
+      };
+      if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') { const p = interpretarNum(inp.value, s.proveedor); if (p) guardar(p); } };
+      const g = sh.querySelector('[data-num=guardar]'); if (g) g.onclick = () => { const p = interpretarNum(inp.value, s.proveedor); if (p) guardar(p); };
+      const q = sh.querySelector('[data-num=quitar]'); if (q) q.onclick = () => guardar('');
+    };
+    bind();
+    setTimeout(() => { const i = sh.querySelector('#num-in'); if (i && !('ontouchstart' in window)) i.focus(); }, 300);
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeNumVuelo(); });
+    document.addEventListener('keydown', escNum);
+  }
+  function escNum(e) { if (e.key === 'Escape') closeNumVuelo(); }
+  function closeNumVuelo() { const o = document.getElementById('num-ov'); if (o) o.remove(); if (!document.querySelector('.inst-ov')) document.body.classList.remove('no-scroll'); document.removeEventListener('keydown', escNum); }
   let vivoTimer = null;
   function cargarVuelos() {
     clearInterval(vivoTimer);
@@ -880,7 +971,7 @@
       <div class="fly-top"><span class="kicker">${ic('plane', 'sm')} Tu vuelo</span><span class="fly-count" data-dep="${pv.t}">${faltaTxt(ms)}</span></div>
       ${codes ? `<div class="fly-route"><b>${codes[0]}</b><span class="fly-line" aria-hidden="true"><i>${ic('plane', 'sm')}</i></span><b>${codes[1]}</b></div>` : `<div class="fly-title">${esc(s.titulo)}</div>`}
       <div class="fly-meta">${segDate(s.inicio)} · ${segTime(s.inicio)}${s.proveedor ? ' · ' + esc(s.proveedor) : ''}${num ? ' · <b>' + esc(num) + '</b>' : ''}</div>
-      ${num ? liveBtn(s, true) : `<div class="fly-hint">${ic('info', 'sm')} Pide a tu asesor tu número de vuelo para ver aquí su estado en vivo.</div>`}
+      ${num ? liveBtn(s, true) + numCambiar(s) : numAgregar(s, true)}
       <ul class="fly-tips">${tips.map(([i, t]) => `<li>${ic(i, 'sm')}<span>${esc(t)}</span></li>`).join('')}</ul>
     </div></div>`;
   }
@@ -934,15 +1025,18 @@
     if (st.d <= 14) return 'pronto';
     return null;
   }
+  const lugarDe = (v) => String((v.clima && v.clima.lugar) || v.destino || v.titulo).split(',')[0];
   function climaSlot(v, st, d) {
     const modo = climaModo(v, st);
     if (!modo) return '';
-    const lugar = esc(String(v.clima.lugar || v.destino || v.titulo).split(',')[0]);
-    if (modo === 'pronto') {
-      const listo = new Date(pDate(v.fecha_inicio).getTime() - 10 * 864e5);
-      return `<div class="section reveal" style="--d:${d}"><div class="wx-card wx-soon">${wxIcon('parcial', false, 44)}<div><b>Clima en ${lugar}</b><span>Tu pronóstico estará listo el ${listo.getDate()} ${MES3[listo.getMonth()]}, 10 días antes de tu viaje.</span></div></div></div>`;
-    }
-    return `<div class="section reveal" style="--d:${d}" id="clima" data-modo="${modo}"><div class="wx-card wx-load" aria-busy="true"><div class="wx-skel"></div><span>Consultando el clima en ${lugar}…</span></div></div>`;
+    const lugar = esc(lugarDe(v));
+    let sub = 'Toca para ver el pronóstico de tus días de viaje';
+    if (modo === 'pronto') { const listo = new Date(pDate(v.fecha_inicio).getTime() - 10 * 864e5); sub = `Tu pronóstico estará listo el ${listo.getDate()} ${MES3[listo.getMonth()]}`; }
+    else if (modo === 'ahora') sub = 'Toca para ver cómo está ahorita';
+    return `<div class="section reveal" style="--d:${d}"><button class="wx-btn tap" id="clima" data-act="clima" data-modo="${modo}">
+      <span class="wx-btn-art" aria-hidden="true">${wxIcon('parcial', false, 46)}</span>
+      <span class="t"><small>Clima en ${lugar}</small><strong>${modo === 'ahora' ? `¿Cómo está el clima en ${lugar}?` : `¿Qué clima te espera en ${lugar}?`}</strong><em class="wx-btn-sub">${sub}</em></span>
+      <span class="chev">${ic('chev')}</span></button></div>`;
   }
   function consejos(dias) {
     const out = [];
@@ -979,23 +1073,74 @@
       <div class="wx-head"><span class="kicker">${wxIcon('despejado', false, 16)} Así estará el clima en ${lugar}</span></div>
       ${strip}${tips}${nota}</div>`;
   }
+  // Precarga el clima para "vestir" el botón (ícono y temperatura) sin mostrar todo el detalle
   async function cargarClima() {
-    const slot = document.getElementById('clima');
+    const btn = document.getElementById('clima');
     const v = currentTrip();
-    if (!slot || !v || !v.clima) return;
-    const st = stageOf(v), modo = slot.dataset.modo;
+    if (!btn || !v || !v.clima) return;
+    const modo = btn.dataset.modo;
+    if (modo === 'pronto') return;
     try {
       const w = await getClima(v.clima);
-      if (!document.body.contains(slot)) return;
-      slot.innerHTML = climaHTML(v, st, w, modo);
-      // número de temperatura que cuenta hasta el valor real
-      const t = slot.querySelector('[data-temp]');
-      if (t && !REDUCED) { const fin = Number(t.dataset.temp), t0 = performance.now(); const step = (n) => { const k = Math.min(1, (n - t0) / 900), e = 1 - Math.pow(1 - k, 3); t.textContent = Math.round(fin * e); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
-      // chip de temperatura en la portada
+      if (!document.body.contains(btn)) return;
+      const st = stageOf(v);
+      const lugar = esc(lugarDe(v));
+      let cielo = 'parcial', noche = false, txt = '';
+      if (modo === 'ahora' && w.ahora) {
+        cielo = w.ahora.cielo; noche = w.ahora.noche;
+        txt = `Ahora ${w.ahora.temp}° · ${(CIELO[cielo] || CIELO.parcial)[0].toLowerCase()} · toca para ver más`;
+      } else {
+        const dias = (w.dias || []).filter((x) => x.fecha >= v.fecha_inicio && x.fecha <= v.fecha_fin);
+        if (dias.length) {
+          const max = Math.max(...dias.map((x) => x.max)), min = Math.min(...dias.map((x) => x.min));
+          cielo = dias.slice().sort((a, b) => (CIELO_PESO[b.cielo] || 0) - (CIELO_PESO[a.cielo] || 0))[Math.floor(dias.length / 2)].cielo;
+          txt = `Entre ${min}° y ${max}° · toca para ver día por día`;
+        }
+      }
+      const k = (CIELO[cielo] || CIELO.parcial)[1];
+      btn.classList.add('listo', 'wx-t-' + (noche && cielo === 'despejado' ? 'noche' : k));
+      btn.querySelector('.wx-btn-art').innerHTML = wxIcon(cielo, noche, 46);
+      if (txt) btn.querySelector('.wx-btn-sub').textContent = txt;
+      // chip de temperatura en la portada (también abre el clima)
       const hc = document.getElementById('hero-temp');
-      if (hc && modo === 'ahora' && w.ahora) { hc.innerHTML = `${wxIcon(w.ahora.cielo, w.ahora.noche, 18)} ${w.ahora.temp}° en ${esc(String(v.clima.lugar || v.destino).split(',')[0])}`; hc.hidden = false; }
-    } catch (e) { slot.remove(); }
+      if (hc && modo === 'ahora' && w.ahora) { hc.innerHTML = `${wxIcon(w.ahora.cielo, w.ahora.noche, 18)} ${w.ahora.temp}° en ${lugar}`; hc.hidden = false; }
+    } catch (e) { /* si falla, el botón sigue y la ventanita lo explica */ }
   }
+  const CIELO_PESO = { despejado: 0, parcial: 1, nublado: 2, niebla: 2, lluvia: 3, lluvia_fuerte: 4, nieve: 4, tormenta: 5 };
+  async function openClima() {
+    const v = currentTrip();
+    if (!v || !v.clima) return;
+    const st = stageOf(v), modo = climaModo(v, st);
+    if (!modo) return;
+    closeClima();
+    logEvent('ver_clima', { modo });
+    const lugar = esc(lugarDe(v));
+    const ov = document.createElement('div');
+    ov.className = 'inst-ov'; ov.id = 'wx-ov';
+    const cerrar = `<button class="inst-x" data-wx="close" aria-label="Cerrar">×</button>`;
+    let cuerpo;
+    if (modo === 'pronto') {
+      const listo = new Date(pDate(v.fecha_inicio).getTime() - 10 * 864e5);
+      cuerpo = `<div class="wx-card wx-soon">${wxIcon('parcial', false, 52)}<div><b>Clima en ${lugar}</b><span>Tu pronóstico estará listo el ${listo.getDate()} ${MES3[listo.getMonth()]}, 10 días antes de tu viaje. Te esperamos aquí.</span></div></div>`;
+    } else cuerpo = `<div class="wx-card wx-load" aria-busy="true"><div class="wx-skel"></div><span>Consultando el clima en ${lugar}…</span></div>`;
+    ov.innerHTML = `<div class="sheet inst wx-sheet" role="dialog" aria-modal="true" aria-label="Clima en ${lugar}">${cerrar}<div id="wx-body">${cuerpo}</div></div>`;
+    document.body.appendChild(ov); document.body.classList.add('no-scroll');
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-wx=close]')) closeClima(); });
+    document.addEventListener('keydown', escClima);
+    if (modo === 'pronto') return;
+    const body = ov.querySelector('#wx-body');
+    try {
+      const w = await getClima(v.clima);
+      if (!document.body.contains(body)) return;
+      body.innerHTML = climaHTML(v, st, w, modo);
+      const t = body.querySelector('[data-temp]');
+      if (t && !REDUCED) { const fin = Number(t.dataset.temp), t0 = performance.now(); const step = (n) => { const k = Math.min(1, (n - t0) / 900), e = 1 - Math.pow(1 - k, 3); t.textContent = Math.round(fin * e); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+    } catch (e) {
+      body.innerHTML = `<div class="wx-card wx-soon">${wxIcon('nube', false, 52)}<div><b>No pudimos consultar el clima</b><span>Revisa tu conexión e inténtalo en un momento.</span></div></div>`;
+    }
+  }
+  function escClima(e) { if (e.key === 'Escape') closeClima(); }
+  function closeClima() { const o = document.getElementById('wx-ov'); if (o) o.remove(); if (!document.querySelector('.inst-ov')) document.body.classList.remove('no-scroll'); document.removeEventListener('keydown', escClima); }
 
 
   // =====================================================================
@@ -1180,6 +1325,8 @@
       if (navigator.share) { try { await navigator.share({ text: t }); } catch (e) {} } else { try { await navigator.clipboard.writeText(t); toast('Texto copiado', 'check'); } catch (e) {} }
     });
     act('install', () => openInstall());
+    act('clima', () => openClima());
+    act('num-vuelo', (e) => openNumVuelo(e.currentTarget.dataset.seg));
     act('cotizar', (e) => openCotizar(e.currentTarget.dataset.origen || ''));
     act('install-omit', (e) => { store.set('mv_inst_omit', String(Date.now())); const s = e.currentTarget.closest('.section'); if (s) s.remove(); });
   }
