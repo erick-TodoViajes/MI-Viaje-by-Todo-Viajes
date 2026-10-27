@@ -691,3 +691,8 @@ body.no-scroll{overflow:hidden}
 .wx-btn.wx-t-tormenta{background:linear-gradient(135deg,#20263A 0%,#3E4766 100%);box-shadow:0 10px 24px rgba(32,38,58,.3)}
 .wx-btn.wx-t-nieve{background:linear-gradient(135deg,#6E8BB5 0%,#B9CCE6 100%)}
 .wx-btn.wx-t-noche{background:linear-gradient(135deg,#1C2350 0%,#3A4790 100%);box-shadow:0 10px 24px rgba(28,35,80,.3)}
+
+/* Aviso de deslinde del vuelo en vivo */
+.vivo-aviso{display:flex;gap:6px;align-items:flex-start;margin-top:10px;padding-top:8px;border-top:1px dashed var(--linea);font-size:.72rem;line-height:1.35;color:var(--gris-2)}
+.vivo-aviso svg{flex:none;width:13px;height:13px;margin-top:1px}
+.vivo.compact .vivo-aviso{margin-top:6px;padding-top:6px}

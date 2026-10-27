@@ -811,7 +811,7 @@
       <div class="vc r"><small>Llega a ${esc(ll.iata || '')}</small>${vivoHora(ll)}<span class="vc-c">${esc(ll.ciudad || ll.aeropuerto || '')}</span></div></div>`;
     if (!big) {
       const linea = [sa.terminal && 'Terminal ' + sa.terminal, sa.puerta && 'Puerta ' + sa.puerta, ll.banda && 'Banda ' + ll.banda].filter(Boolean).join(' · ');
-      return top + cols + vivoProgreso(v) + (linea ? `<div class="vivo-line">${esc(linea)}</div>` : '');
+      return top + cols + vivoProgreso(v) + (linea ? `<div class="vivo-line">${esc(linea)}</div>` : '') + `<div class="vivo-aviso">Solo informativo · confirma con tu aerolínea</div>`;
     }
     const datos = `<div class="vivo-datos">
       ${dato('Terminal salida', sa.terminal)}${dato('Puerta', sa.puerta, 'Por asignar')}
@@ -819,7 +819,8 @@
       ${dato('Terminal llegada', ll.terminal)}${ll.banda || ['aproximando', 'aterrizo'].includes(v.estado) ? dato('Banda de equipaje', ll.banda, 'Por asignar') : ''}</div>`;
     const pie = [v.aerolinea, v.avion].filter(Boolean).join(' · ');
     const aviso = v.estado === 'cancelado' || v.estado === 'desviado' ? `<div class="vivo-alerta">${ic('info', 'sm')}<span>Escríbenos por WhatsApp y te ayudamos con tu vuelo.</span></div>` : '';
-    return top + cols + vivoProgreso(v) + datos + aviso + (pie ? `<div class="vivo-pie">${ic('plane', 'sm')}<span>${esc(pie)}</span></div>` : '');
+    return top + cols + vivoProgreso(v) + datos + aviso + (pie ? `<div class="vivo-pie">${ic('plane', 'sm')}<span>${esc(pie)}</span></div>` : '') +
+      `<div class="vivo-aviso">${ic('info', 'sm')}<span>Información solo de referencia, proviene de la aerolínea y puede cambiar sin aviso. Confirma siempre con tu aerolínea y en las pantallas del aeropuerto. Todo Viajes no se hace responsable por cambios, retrasos o datos incorrectos.</span></div>`;
   }
   function pintarVuelo(id, d) {
     document.querySelectorAll(`[data-vivo="${id}"]`).forEach((el) => {
